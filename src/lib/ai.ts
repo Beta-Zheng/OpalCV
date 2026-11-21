@@ -64,6 +64,28 @@ export class ProviderError extends Error {
   }
 }
 
+export interface ChatStreamOptions {
+  signal?: AbortSignal;
+  stream?: boolean;
+  onChunk?: (chunk: string, accumulated: string) => void;
+  onProgress?: (accumulated: string) => void;
+}
+
+function normalizeChatOptions(
+  signalOrOptions?: AbortSignal | ChatStreamOptions
+): ChatStreamOptions {
+  if (!signalOrOptions) return {};
+  if ("aborted" in signalOrOptions) {
+    return { signal: signalOrOptions };
+  }
+  return signalOrOptions;
+}
+
+function shouldStream(options: ChatStreamOptions): boolean {
+  if (options.stream === false) return false;
+  return Boolean(options.stream || options.onChunk || options.onProgress);
+}
+
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -85,54 +107,188 @@ async function fetchWithTimeout(
   }
 }
 
-async function chatOllama(
+async function readStreamWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  extractDelta: (line: string) => string,
+  extractFallbackJson: (data: any) => string,
+  options: ChatStreamOptions
+): Promise<string> {
+  const ctrl = new AbortController();
+  const abort = () => ctrl.abort();
+  if (init.signal?.aborted) ctrl.abort();
+  init.signal?.addEventListener("abort", abort, { once: true });
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const onAbort = () => {
+    reader?.cancel(new DOMException("timeout", "AbortError")).catch(() => {});
+  };
+  ctrl.signal.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    if (!res.ok) throw new ProviderError(res.status);
+
+    const contentType = res.headers?.get?.("content-type") ?? "";
+    if (!res.body || contentType.includes("application/json")) {
+      const data = await res.json();
+      const text = extractFallbackJson(data);
+      if (text) {
+        options.onChunk?.(text, text);
+        options.onProgress?.(text);
+      }
+      return text;
+    }
+
+    reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let accumulated = "";
+
+    const emitLine = (rawLine: string) => {
+      const line = rawLine.trim();
+      if (!line) return;
+      const delta = extractDelta(line);
+      if (!delta) return;
+      accumulated += delta;
+      options.onChunk?.(delta, accumulated);
+      options.onProgress?.(accumulated);
+    };
+
+    while (true) {
+      if (ctrl.signal.aborted) {
+        throw new DOMException("timeout", "AbortError");
+      }
+      const { value, done } = await reader.read();
+      if (ctrl.signal.aborted) {
+        throw new DOMException("timeout", "AbortError");
+      }
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        emitLine(line);
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      emitLine(buffer);
+    }
+    return accumulated;
+  } finally {
+    clearTimeout(t);
+    ctrl.signal.removeEventListener("abort", onAbort);
+    init.signal?.removeEventListener("abort", abort);
+  }
+}
+
+function parseOllamaStreamLine(line: string): string {
+  try {
+    const parsed = JSON.parse(line);
+    return parsed?.message?.content ?? parsed?.response ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function parseOpenAIStreamLine(line: string): string {
+  if (!line.startsWith("data:")) return "";
+  const payload = line.slice(5).trim();
+  if (!payload || payload === "[DONE]") return "";
+  try {
+    const parsed = JSON.parse(payload);
+    return (
+      parsed?.choices?.[0]?.delta?.content ??
+      parsed?.choices?.[0]?.message?.content ??
+      ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+export async function chatOllama(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<string> {
+  const options = normalizeChatOptions(signalOrOptions);
+  const stream = shouldStream(options);
   const base = (p.base_url || "http://localhost:11434").replace(/\/$/, "");
-  const res = await fetchWithTimeout(
-    `${base}/api/chat`,
-    {
-      method: "POST",
-      signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: p.model_name,
-        messages,
-        stream: false,
-        format: "json",
-        options: { temperature: p.temperature },
-      }),
-    },
-    p.timeout_ms
-  );
+  const init: RequestInit = {
+    method: "POST",
+    signal: options.signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: p.model_name,
+      messages,
+      stream,
+      format: "json",
+      options: { temperature: p.temperature },
+    }),
+  };
+
+  if (stream) {
+    return readStreamWithTimeout(
+      `${base}/api/chat`,
+      init,
+      p.timeout_ms,
+      parseOllamaStreamLine,
+      (res) => res?.message?.content ?? "",
+      options
+    );
+  }
+
+  const res = await fetchWithTimeout(`${base}/api/chat`, init, p.timeout_ms);
   return res?.message?.content ?? "";
 }
 
-async function chatOpenAI(
+export async function chatOpenAI(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<string> {
+  const options = normalizeChatOptions(signalOrOptions);
+  const stream = shouldStream(options);
   const base = (p.base_url || "https://api.openai.com/v1").replace(/\/$/, "");
+  const body: Record<string, unknown> = {
+    model: p.model_name,
+    messages,
+    temperature: p.temperature,
+    max_tokens: p.max_tokens,
+    response_format: { type: "json_object" },
+  };
+  if (stream) {
+    body.stream = true;
+  }
+  const init: RequestInit = {
+    method: "POST",
+    signal: options.signal,
+    headers: {
+      "Content-Type": "application/json",
+      ...(p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {}),
+    },
+    body: JSON.stringify(body),
+  };
+
+  if (stream) {
+    return readStreamWithTimeout(
+      `${base}/chat/completions`,
+      init,
+      p.timeout_ms,
+      parseOpenAIStreamLine,
+      (res) => res?.choices?.[0]?.message?.content ?? "",
+      options
+    );
+  }
+
   const res = await fetchWithTimeout(
     `${base}/chat/completions`,
-    {
-      method: "POST",
-      signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {}),
-      },
-      body: JSON.stringify({
-        model: p.model_name,
-        messages,
-        temperature: p.temperature,
-        max_tokens: p.max_tokens,
-        response_format: { type: "json_object" },
-      }),
-    },
+    init,
     p.timeout_ms
   );
   return res?.choices?.[0]?.message?.content ?? "";
@@ -141,11 +297,11 @@ async function chatOpenAI(
 export function chat(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<string> {
   return p.protocol === "ollama"
-    ? chatOllama(p, messages, signal)
-    : chatOpenAI(p, messages, signal);
+    ? chatOllama(p, messages, signalOrOptions)
+    : chatOpenAI(p, messages, signalOrOptions);
 }
 
 /* ---------------- 输出校验（§15.1） ---------------- */
@@ -241,7 +397,7 @@ export async function generateWithLLM(
   block: Block,
   resumeSummary: string,
   jdJson: string | null,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<AISuggestionOutput> {
   const userPrompt = [
     ACTION_INSTRUCTION[action],
@@ -261,7 +417,7 @@ export async function generateWithLLM(
     { role: "user", content: userPrompt },
   ];
 
-  const raw = await chat(provider, messages, signal);
+  const raw = await chat(provider, messages, signalOrOptions);
   try {
     return parseAIOutput(raw, block);
   } catch (firstErr) {
@@ -276,7 +432,7 @@ export async function generateWithLLM(
             "上一次输出不是合法 JSON。请只输出符合格式的 JSON 对象本身，不要任何前后缀。",
         },
       ],
-      signal
+      signalOrOptions
     );
     try {
       return parseAIOutput(retry, block);
@@ -481,34 +637,92 @@ export function ruleSuggestion(
 
 /* ---------------- 模型连通性测试 ---------------- */
 
+export type ProviderDiagnosticCode =
+  | "ok"
+  | "cors_or_network"
+  | "auth_error"
+  | "model_not_found"
+  | "timeout"
+  | "http_error"
+  | "unknown";
+
+export interface ProviderTestResult {
+  ok: boolean;
+  latency: number;
+  message: string;
+  json: boolean;
+  code: ProviderDiagnosticCode;
+  hint?: string;
+  availableModels?: string[];
+}
+
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof DOMException && e.name === "AbortError") ||
+    (e instanceof Error && e.name === "AbortError")
+  );
+}
+
+function isNetworkOrCorsError(e: unknown): boolean {
+  if (e instanceof TypeError) return true;
+  if (!(e instanceof Error)) return false;
+  return /failed to fetch|networkerror|load failed|fetch failed|cors/i.test(
+    e.message
+  );
+}
+
 export async function testProvider(
   p: ModelProvider
-): Promise<{ ok: boolean; latency: number; message: string; json: boolean }> {
+): Promise<ProviderTestResult> {
   const t0 = performance.now();
+  const base = (
+    p.base_url ||
+    (p.protocol === "ollama"
+      ? "http://localhost:11434"
+      : "https://api.openai.com/v1")
+  ).replace(/\/$/, "");
+
   try {
     if (p.protocol === "ollama") {
-      const base = (p.base_url || "http://localhost:11434").replace(/\/$/, "");
       const res = await fetchWithTimeout(
         `${base}/api/tags`,
         { method: "GET" },
         p.timeout_ms
       );
-      const models: string[] = (res?.models || []).map(
-        (m: { name: string }) => m.name
+      const models: string[] = (res?.models || [])
+        .map((m: { name?: string }) => m.name)
+        .filter((name: unknown): name is string => typeof name === "string");
+      const hasModel = models.some(
+        (m) => m === p.model_name || m.startsWith(p.model_name)
       );
-      const hasModel = models.some((m) => m.startsWith(p.model_name));
+      const latency = Math.round(performance.now() - t0);
+
+      if (!hasModel) {
+        return {
+          ok: false,
+          latency,
+          code: "model_not_found",
+          availableModels: models,
+          message: `已连上 Ollama，但未找到模型「${p.model_name}」（本机可用：${
+            models.slice(0, 6).join("、") || "无"
+          }）`,
+          hint: models.length
+            ? `请执行 ollama pull ${p.model_name}，或改用上方已安装模型。`
+            : `本机暂无已拉取模型，请先执行 ollama pull ${p.model_name}。`,
+          json: false,
+        };
+      }
+
       return {
         ok: true,
-        latency: Math.round(performance.now() - t0),
-        message: hasModel
-          ? `连接成功，发现模型 ${p.model_name}（本机共 ${models.length} 个模型）`
-          : `连接成功，但未找到模型 ${p.model_name}（本机：${
-              models.slice(0, 4).join("、") || "空"
-            }）`,
+        latency,
+        code: "ok",
+        availableModels: models,
+        message: `连接成功，发现模型 ${p.model_name}（本机共 ${models.length} 个模型）`,
         json: true,
       };
     }
-    const base = (p.base_url || "https://api.openai.com/v1").replace(/\/$/, "");
+
     const res = await fetchWithTimeout(
       `${base}/models`,
       {
@@ -517,20 +731,111 @@ export async function testProvider(
       },
       p.timeout_ms
     );
+    const latency = Math.round(performance.now() - t0);
+    const models: string[] = Array.isArray(res?.data)
+      ? res.data
+          .map((m: { id?: string }) => m.id)
+          .filter((id: unknown): id is string => typeof id === "string")
+      : [];
+
+    if (
+      models.length > 0 &&
+      p.model_name &&
+      !models.includes(p.model_name)
+    ) {
+      return {
+        ok: false,
+        latency,
+        code: "model_not_found",
+        availableModels: models,
+        message: `鉴权通过，但服务模型列表中未找到「${p.model_name}」（可用：${models
+          .slice(0, 6)
+          .join("、")}）`,
+        hint: "请核对 Model 名称拼写，或选择服务返回的可用模型。",
+        json: false,
+      };
+    }
+
     return {
       ok: true,
-      latency: Math.round(performance.now() - t0),
+      latency,
+      code: "ok",
+      ...(models.length ? { availableModels: models } : {}),
       message: "连接成功，鉴权通过",
       json: true,
     };
   } catch (e) {
+    if (isAbortError(e)) {
+      return {
+        ok: false,
+        latency: 0,
+        code: "timeout",
+        message: `连接超时（>${p.timeout_ms / 1000}s），请确认服务已启动且网络畅通`,
+        hint: "可检查服务是否正常运行、端口是否被占用/拦截，或在高级参数中增大超时时间。",
+        json: false,
+      };
+    }
+
+    if (e instanceof ProviderError) {
+      if (e.status === 401 || e.status === 403) {
+        return {
+          ok: false,
+          latency: 0,
+          code: "auth_error",
+          message: `鉴权失败（HTTP ${e.status}）：请检查 API Key 是否正确或有效`,
+          hint: "请在模型配置中核对 API Key（Bearer Token）、权限范围或账户余额。",
+          json: false,
+        };
+      }
+      if (e.status === 404) {
+        return {
+          ok: false,
+          latency: 0,
+          code: "model_not_found",
+          message: `未找到模型或接口（HTTP 404）：请检查 Base URL 与模型名称「${p.model_name}」`,
+          hint:
+            p.protocol === "ollama"
+              ? `请确认 Base URL 为 Ollama 根地址（如 http://localhost:11434）且已拉取 ${p.model_name}。`
+              : "请确认 Base URL 是否包含 /v1 前缀，以及该服务是否支持 /models 与所填模型名。",
+          json: false,
+        };
+      }
+      return {
+        ok: false,
+        latency: 0,
+        code: "http_error",
+        message: `服务返回 HTTP ${e.status}，请检查服务状态与请求地址`,
+        hint:
+          e.status === 429
+            ? "请求过于频繁或额度不足（429），请稍后重试。"
+            : "请检查服务端日志与 Base URL 配置。",
+        json: false,
+      };
+    }
+
+    if (isNetworkOrCorsError(e)) {
+      const isLocal =
+        p.protocol === "ollama" ||
+        /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i.test(base);
+      return {
+        ok: false,
+        latency: 0,
+        code: "cors_or_network",
+        message: isLocal
+          ? "无法连接到本地服务（可能被浏览器 CORS 跨域拦截或服务未启动）"
+          : "网络请求被拦截（可能存在 CORS 跨域限制或网络不可达）",
+        hint: isLocal
+          ? `若服务已启动仍报此错，请设置环境变量 OLLAMA_ORIGINS="*" 后重启服务，并确认地址 ${base} 可访问。`
+          : "浏览器端直连需目标 API 允许当前页面 Origin 的 CORS 跨域请求，或通过本地/私有代理转发。",
+        json: false,
+      };
+    }
+
     return {
       ok: false,
       latency: 0,
-      message:
-        e instanceof DOMException && e.name === "AbortError"
-          ? `连接超时（>${p.timeout_ms / 1000}s），请确认服务已启动`
-          : `连接失败：${e instanceof Error ? e.message : "网络错误"}`,
+      code: "unknown",
+      message: `连接失败：${e instanceof Error ? e.message : "未知错误"}`,
       json: false,
     };
   }

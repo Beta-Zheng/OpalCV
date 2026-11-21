@@ -6,7 +6,7 @@ import type {
   RouteStrategy,
 } from "../types";
 import { cx, nowISO, uid } from "../lib/utils";
-import { testProvider } from "../lib/ai";
+import { testProvider, type ProviderDiagnosticCode } from "../lib/ai";
 import { useAppSlice } from "../lib/store";
 import { Btn, Confirm, Modal, ModalHeader, Toggle } from "../components/ui";
 import {
@@ -33,7 +33,19 @@ interface TestState {
   ok?: boolean;
   latency?: number;
   message?: string;
+  code?: ProviderDiagnosticCode;
+  hint?: string;
+  availableModels?: string[];
 }
+
+const DIAG_BADGE: Partial<Record<ProviderDiagnosticCode, string>> = {
+  cors_or_network: "CORS / 网络拦截",
+  auth_error: "鉴权失败",
+  model_not_found: "模型未找到",
+  timeout: "连接超时",
+  http_error: "HTTP 异常",
+  unknown: "连接失败",
+};
 
 function ModelForm({
   initial,
@@ -296,6 +308,7 @@ function ModelForm({
 export default function Models() {
   const {
     models,
+    saveModel,
     deleteModel,
     toggleModel,
     privacy,
@@ -304,6 +317,7 @@ export default function Models() {
     toast,
   } = useAppSlice(
     "models",
+    "saveModel",
     "deleteModel",
     "toggleModel",
     "privacy",
@@ -334,6 +348,9 @@ export default function Models() {
         ok: r.ok,
         latency: r.latency,
         message: r.message,
+        code: r.code,
+        hint: r.hint,
+        availableModels: r.availableModels,
       },
     }));
   };
@@ -542,28 +559,62 @@ export default function Models() {
                   </div>
                 </details>
                 {t && !t.running && (
-                  <p
+                  <div
                     className={cx(
-                      "mt-2.5 flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-[12px] font-medium leading-snug",
+                      "mt-2.5 flex items-start gap-2 rounded-lg px-2.5 py-2 text-[12px] leading-snug",
                       t.ok
                         ? "bg-ok-bg text-ok"
                         : "bg-danger-100 text-danger-700"
                     )}
                   >
                     {t.ok ? (
-                      <IconCheck size={12} className="mt-0.5 shrink-0" />
+                      <IconCheck size={13} className="mt-0.5 shrink-0" />
                     ) : (
-                      <IconAlert size={12} className="mt-0.5 shrink-0" />
+                      <IconAlert size={13} className="mt-0.5 shrink-0" />
                     )}
-                    <span>
-                      {t.message}
-                      {t.ok && (
-                        <span className="ml-1 font-mono text-[12px] opacity-70">
-                          {t.latency}ms · JSON 输出可用
-                        </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                        {!t.ok && t.code && DIAG_BADGE[t.code] && (
+                          <span className="rounded bg-danger-200/70 px-1.5 py-0.5 text-[10.5px] font-bold text-danger-800">
+                            {DIAG_BADGE[t.code]}
+                          </span>
+                        )}
+                        <span>{t.message}</span>
+                        {t.ok && (
+                          <span className="font-mono text-[11.5px] opacity-75">
+                            {t.latency}ms · JSON 输出可用
+                          </span>
+                        )}
+                      </div>
+                      {t.hint && (
+                        <p className="text-[11.5px] leading-relaxed opacity-90">
+                          {t.hint}
+                        </p>
                       )}
-                    </span>
-                  </p>
+                      {!t.ok &&
+                        t.availableModels &&
+                        t.availableModels.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                            <span className="text-[11px] opacity-80">
+                              点击切换可用模型：
+                            </span>
+                            {t.availableModels.slice(0, 6).map((name) => (
+                              <button
+                                key={name}
+                                type="button"
+                                onClick={() => {
+                                  saveModel({ ...m, model_name: name });
+                                  toast("ok", `已切换模型为「${name}」`);
+                                }}
+                                className="rounded border border-danger-300/70 bg-white/80 px-1.5 py-0.5 font-mono text-[11px] text-ink-800 transition hover:bg-white"
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+                  </div>
                 )}
                 <div className="mt-3 flex items-center gap-1.5 border-t border-ink-100 pt-2.5">
                   <Btn
@@ -607,7 +658,9 @@ export default function Models() {
             <span className="font-mono text-ink-400">
               ollama pull qwen2.5:7b
             </span>
-            ）。API Key 仅保存在本机，不在日志与界面明文展示。
+            ）。若浏览器端提示 CORS 跨域拦截，请设置环境变量{" "}
+            <span className="font-mono text-ink-400">OLLAMA_ORIGINS="*"</span>{" "}
+            后重启 Ollama。API Key 仅保存在本机，不在日志与界面明文展示。
           </p>
         </details>
       </section>
