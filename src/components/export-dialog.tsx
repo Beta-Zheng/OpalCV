@@ -4,7 +4,7 @@ import type { Resume } from "../types";
 import { useAppSlice } from "../lib/store";
 import { createResumeBackup } from "../lib/backup";
 import { inspectResume } from "../lib/workflow";
-import { generateDocx, resumeText, downloadBlob } from "../lib/export";
+import { generateDocx, generatePdf, resumeText, downloadBlob } from "../lib/export";
 import { downloadText, fmtDateCompact, nowISO } from "../lib/utils";
 import type { PageLayout } from "../lib/pagination";
 import ResumePreview from "./resume-preview";
@@ -82,6 +82,26 @@ export default function ExportDialog({
       setBusy(false);
     }
   };
+  const downloadPdf = async () => {
+    setBusy(true);
+    try {
+      const pageResumes =
+        planRef.current?.source === resume && planRef.current.pages.length > 0
+          ? planRef.current.pages.map((p) => p.resume)
+          : undefined;
+      const pdfBytes = await generatePdf(resume, pageResumes);
+      downloadBlob(
+        `${safeName}.pdf`,
+        new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" })
+      );
+      capture("PDF 导出准备");
+      app.toast("ok", "已生成并下载 PDF 文件");
+    } catch {
+      app.toast("err", "PDF 导出失败，请尝试系统打印或下载 DOCX");
+    } finally {
+      setBusy(false);
+    }
+  };
   const word = async () => {
     setBusy(true);
     try {
@@ -93,7 +113,7 @@ export default function ExportDialog({
         })
       );
       capture("DOCX 导出准备");
-      app.toast("ok", "已生成可编辑的单栏 Word 文档");
+      app.toast("ok", "已生成可编辑的 Word 文档");
     } catch {
       app.toast("err", "Word 导出失败，内容已保留");
     } finally {
@@ -209,11 +229,17 @@ export default function ExportDialog({
           下载 DOCX
         </Btn>
         <Btn
-          variant="primary"
           disabled={busy || !ready || !!plan?.pages.some((p) => p.oversized)}
           onClick={() => void print()}
         >
-          {busy ? "正在准备…" : "打印 / 另存为 PDF"}
+          系统打印
+        </Btn>
+        <Btn
+          variant="primary"
+          disabled={busy}
+          onClick={() => void downloadPdf()}
+        >
+          {busy ? "正在导出…" : "下载 PDF"}
         </Btn>
       </div>
       {prepared && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-4 py-2 text-[12px] text-ink-500"><span>已保留导出准备快照；尚未记录实际投递。</span><Btn size="sm" onClick={onRecordApplication}>记录投递</Btn></div>}
