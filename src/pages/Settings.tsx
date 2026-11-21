@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { downloadText, fmtDateCompact, nowISO } from "../lib/utils";
+import { cx, downloadText, fmtDateCompact, nowISO } from "../lib/utils";
 import { useAppSlice } from "../lib/store";
 import {
   createBackup,
@@ -7,13 +7,22 @@ import {
   parseBackup,
   type BackupData,
 } from "../lib/backup";
+import {
+  downloadBackupFromGist,
+  downloadBackupFromWebDav,
+  uploadBackupToGist,
+  uploadBackupToWebDav,
+} from "../lib/sync";
 import { Btn, Confirm, Toggle, Modal, ModalHeader } from "../components/ui";
 import {
   IconAlert,
   IconCheck,
   IconDatabase,
   IconDownload,
+  IconEye,
+  IconEyeOff,
   IconLock,
+  IconRefresh,
   IconShield,
   IconTrash,
   IconUpload,
@@ -45,6 +54,22 @@ export default function Settings() {
   } | null>(null);
   const [restoreMode, setRestoreMode] = useState<"merge" | "replace">("merge");
   const [singleId, setSingleId] = useState("");
+  const [syncTarget, setSyncTarget] = useState<"webdav" | "gist">("webdav");
+  const [syncPassphrase, setSyncPassphrase] = useState("");
+  const [showSyncPassphrase, setShowSyncPassphrase] = useState(false);
+  const [webdavUrl, setWebdavUrl] = useState("");
+  const [webdavUser, setWebdavUser] = useState("");
+  const [webdavPass, setWebdavPass] = useState("");
+  const [gistToken, setGistToken] = useState("");
+  const [gistId, setGistId] = useState("");
+  const [gistFilename, setGistFilename] = useState(
+    "touchstone-cv-backup.enc.json"
+  );
+  const [syncBusy, setSyncBusy] = useState<null | "upload" | "download">(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
   const [storageEstimate, setStorageEstimate] =
     useState<StorageEstimate | null>(null);
   useEffect(() => {
@@ -116,6 +141,69 @@ export default function Settings() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleSyncUpload = async () => {
+    setSyncBusy("upload");
+    setSyncStatus(null);
+    try {
+      if (syncTarget === "webdav") {
+        const res = await uploadBackupToWebDav(
+          { url: webdavUrl, username: webdavUser, password: webdavPass },
+          app,
+          syncPassphrase
+        );
+        const msg = `已加密上传至 WebDAV（${res.bytes} 字节）`;
+        setSyncStatus({ ok: true, text: msg });
+        app.toast("ok", msg);
+      } else {
+        const res = await uploadBackupToGist(
+          { token: gistToken, gistId, filename: gistFilename },
+          app,
+          syncPassphrase
+        );
+        if (res.gistId) setGistId(res.gistId);
+        const msg = `已加密上传至私有 Gist（ID: ${res.gistId}，${res.bytes} 字节）`;
+        setSyncStatus({ ok: true, text: msg });
+        app.toast("ok", msg);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "加密上传失败";
+      setSyncStatus({ ok: false, text: msg });
+      app.toast("err", msg);
+    } finally {
+      setSyncBusy(null);
+    }
+  };
+
+  const handleSyncDownload = async () => {
+    setSyncBusy("download");
+    setSyncStatus(null);
+    try {
+      const res =
+        syncTarget === "webdav"
+          ? await downloadBackupFromWebDav(
+              { url: webdavUrl, username: webdavUser, password: webdavPass },
+              syncPassphrase,
+              models
+            )
+          : await downloadBackupFromGist(
+              { token: gistToken, gistId, filename: gistFilename },
+              syncPassphrase,
+              models
+            );
+      setRestoring({ raw: res.raw, data: res.data });
+      setRestoreMode("merge");
+      const msg = "已下载并解密备份，请在弹窗中确认恢复方式";
+      setSyncStatus({ ok: true, text: msg });
+      app.toast("ok", msg);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "下载或解密失败";
+      setSyncStatus({ ok: false, text: msg });
+      app.toast("err", msg);
+    } finally {
+      setSyncBusy(null);
+    }
   };
 
   return (
@@ -317,6 +405,197 @@ export default function Settings() {
           </div>
         </section>
       </div>
+
+      {/* 加密云端同步 */}
+      <section
+        className="anim-fade-up rounded-2xl border border-ink-200 bg-paper-25 p-5"
+        style={{ animationDelay: "0.12s" }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-[15px] font-bold text-ink-900">
+              <IconRefresh size={16} className="text-brand-600" />{" "}
+              加密云端同步（WebDAV / GitHub Gist）
+            </h2>
+            <p className="mt-1 text-[12px] text-ink-500">
+              上传前在本地使用 AES-GCM 加密整个备份 JSON；同步 Token、WebDAV
+              密码与加密口令仅驻留内存，绝不写入备份文件或浏览器持久存储。
+            </p>
+          </div>
+          <div className="flex rounded-lg bg-paper-200 p-0.5">
+            {(
+              [
+                ["webdav", "WebDAV"],
+                ["gist", "GitHub 私有 Gist"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setSyncTarget(k);
+                  setSyncStatus(null);
+                }}
+                className={cx(
+                  "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
+                  syncTarget === k
+                    ? "bg-white text-ink-900 shadow-sm"
+                    : "text-ink-500 hover:text-ink-700"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="block md:col-span-2">
+            <span className="field-label">同步加密密码（Passphrase）</span>
+            <div className="relative">
+              <input
+                type={showSyncPassphrase ? "text" : "password"}
+                className="field-input pr-8 font-mono"
+                value={syncPassphrase}
+                onChange={(e) => setSyncPassphrase(e.target.value)}
+                placeholder="用于加密上传与解密恢复的口令（不会存入备份）"
+              />
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-500 hover:text-ink-700"
+                onClick={() => setShowSyncPassphrase((v) => !v)}
+                aria-label="显示/隐藏同步密码"
+              >
+                {showSyncPassphrase ? (
+                  <IconEyeOff size={14} />
+                ) : (
+                  <IconEye size={14} />
+                )}
+              </button>
+            </div>
+          </label>
+
+          {syncTarget === "webdav" ? (
+            <>
+              <label className="block md:col-span-2">
+                <span className="field-label">WebDAV 文件 URL</span>
+                <input
+                  type="url"
+                  className="field-input font-mono"
+                  value={webdavUrl}
+                  onChange={(e) => setWebdavUrl(e.target.value)}
+                  placeholder="https://dav.example.com/backups/touchstone-cv.enc.json"
+                />
+              </label>
+              <label className="block">
+                <span className="field-label">用户名（可选）</span>
+                <input
+                  type="text"
+                  className="field-input"
+                  value={webdavUser}
+                  onChange={(e) => setWebdavUser(e.target.value)}
+                  placeholder="WebDAV 用户名"
+                />
+              </label>
+              <label className="block">
+                <span className="field-label">密码 / 应用密码（可选）</span>
+                <input
+                  type="password"
+                  className="field-input font-mono"
+                  value={webdavPass}
+                  onChange={(e) => setWebdavPass(e.target.value)}
+                  placeholder="WebDAV 密码"
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="block md:col-span-2">
+                <span className="field-label">
+                  GitHub Personal Access Token（需 gist 权限）
+                </span>
+                <input
+                  type="password"
+                  className="field-input font-mono"
+                  value={gistToken}
+                  onChange={(e) => setGistToken(e.target.value)}
+                  placeholder="ghp_… 或 github_pat_…"
+                />
+              </label>
+              <label className="block">
+                <span className="field-label">
+                  Gist ID（上传时留空将自动新建私有 Gist）
+                </span>
+                <input
+                  type="text"
+                  className="field-input font-mono"
+                  value={gistId}
+                  onChange={(e) => setGistId(e.target.value)}
+                  placeholder="例如 a1b2c3d4e5f6…"
+                />
+              </label>
+              <label className="block">
+                <span className="field-label">Gist 文件名</span>
+                <input
+                  type="text"
+                  className="field-input font-mono"
+                  value={gistFilename}
+                  onChange={(e) => setGistFilename(e.target.value)}
+                  placeholder="touchstone-cv-backup.enc.json"
+                />
+              </label>
+            </>
+          )}
+        </div>
+
+        {syncStatus && (
+          <p
+            role="status"
+            className={cx(
+              "mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-[12px]",
+              syncStatus.ok
+                ? "bg-ok-bg text-ok"
+                : "bg-danger-100 text-danger-700"
+            )}
+          >
+            {syncStatus.ok ? (
+              <IconCheck size={14} className="shrink-0" />
+            ) : (
+              <IconAlert size={14} className="shrink-0" />
+            )}
+            <span>{syncStatus.text}</span>
+          </p>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Btn
+            variant="dark"
+            className="h-9"
+            disabled={syncBusy !== null}
+            onClick={() => void handleSyncUpload()}
+          >
+            <IconUpload size={14} />{" "}
+            {syncBusy === "upload"
+              ? "加密上传中…"
+              : syncTarget === "webdav"
+              ? "加密上传到 WebDAV"
+              : "加密上传到私有 Gist"}
+          </Btn>
+          <Btn
+            variant="outline"
+            className="h-9"
+            disabled={syncBusy !== null}
+            onClick={() => void handleSyncDownload()}
+          >
+            <IconDownload size={14} />{" "}
+            {syncBusy === "download"
+              ? "下载解密中…"
+              : syncTarget === "webdav"
+              ? "从 WebDAV 下载并恢复"
+              : "从 Gist 下载并恢复"}
+          </Btn>
+        </div>
+      </section>
 
       {/* 危险区 */}
       <section

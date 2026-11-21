@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   ModelProvider,
   ModelProtocol,
@@ -7,20 +7,24 @@ import type {
 } from "../types";
 import { cx, nowISO, uid } from "../lib/utils";
 import { testProvider, type ProviderDiagnosticCode } from "../lib/ai";
+import { decryptText, encryptText, isEncryptedPayload } from "../lib/crypto";
 import { useAppSlice } from "../lib/store";
 import { Btn, Confirm, Modal, ModalHeader, Toggle } from "../components/ui";
 import {
   IconAlert,
   IconCheck,
-  IconCpu,
   IconEdit,
   IconEye,
   IconEyeOff,
+  IconLock,
   IconPlus,
   IconShield,
   IconTrash,
   IconZap,
 } from "../components/icons";
+
+// Session-only memory for the optional master passphrase; never persisted to storage.
+let sessionMasterPassphrase: string | null = null;
 
 const TYPE_META: Record<ModelType, { label: string; cls: string }> = {
   local: { label: "本地", cls: "bg-brand-600 text-white" },
@@ -49,14 +53,17 @@ const DIAG_BADGE: Partial<Record<ProviderDiagnosticCode, string>> = {
 
 function ModelForm({
   initial,
+  sessionPassphrase,
   onClose,
 }: {
   initial: ModelProvider | null;
+  sessionPassphrase: string | null;
   onClose: () => void;
 }) {
   const { saveModel, toast } = useAppSlice("saveModel", "toast");
-  const [m, setM] = useState<ModelProvider>(
-    initial ?? {
+  const initialIsEncrypted = isEncryptedPayload(initial?.api_key);
+  const [m, setM] = useState<ModelProvider>(() => {
+    const base = initial ?? {
       id: uid("model"),
       name: "",
       type: "local",
@@ -69,13 +76,37 @@ function ModelForm({
       timeout_ms: 30000,
       enabled: true,
       created_at: nowISO(),
-    }
-  );
+    };
+    return initialIsEncrypted ? { ...base, api_key: "" } : base;
+  });
   const [showKey, setShowKey] = useState(false);
+  const [keyModified, setKeyModified] = useState(!initialIsEncrypted);
+  const [saving, setSaving] = useState(false);
   const set = (patch: Partial<ModelProvider>) =>
     setM((v) => ({ ...v, ...patch }));
 
-  const submit = () => {
+  useEffect(() => {
+    let active = true;
+    if (!initialIsEncrypted || !initial?.api_key || !sessionPassphrase) {
+      return () => {
+        active = false;
+      };
+    }
+    void decryptText(initial.api_key, sessionPassphrase)
+      .then((plain) => {
+        if (!active) return;
+        setM((v) => ({ ...v, api_key: plain }));
+        setKeyModified(true);
+      })
+      .catch(() => {
+        if (active) setKeyModified(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [initial?.api_key, initialIsEncrypted, sessionPassphrase]);
+
+  const submit = async () => {
     if (!m.name.trim() || !m.model_name.trim()) {
       toast("warn", "请填写模型名称与 Model 名称");
       return;
@@ -114,14 +145,33 @@ function ModelForm({
       toast("warn", "请检查温度、输出长度和超时范围");
       return;
     }
-    saveModel({
-      ...m,
-      base_url: baseUrl,
-      name: m.name.trim(),
-      model_name: m.model_name.trim(),
-    });
-    toast("ok", `模型「${m.name}」已保存`);
-    onClose();
+    setSaving(true);
+    try {
+      let nextApiKey = m.api_key;
+      if (initialIsEncrypted && !keyModified && initial?.api_key) {
+        // Keep existing encrypted payload untouched when locked and user didn't enter a replacement key.
+        nextApiKey = initial.api_key;
+      } else if (
+        sessionPassphrase &&
+        nextApiKey &&
+        !isEncryptedPayload(nextApiKey)
+      ) {
+        nextApiKey = await encryptText(nextApiKey, sessionPassphrase);
+      }
+      saveModel({
+        ...m,
+        api_key: nextApiKey,
+        base_url: baseUrl,
+        name: m.name.trim(),
+        model_name: m.model_name.trim(),
+      });
+      toast("ok", `模型「${m.name}」已保存`);
+      onClose();
+    } catch (err) {
+      toast("err", err instanceof Error ? err.message : "保存模型失败");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -228,8 +278,17 @@ function ModelForm({
                 className="field-input pr-8 font-mono"
                 type={showKey ? "text" : "password"}
                 value={m.api_key}
-                placeholder={m.type === "external" ? "sk-…" : "本地可留空"}
-                onChange={(e) => set({ api_key: e.target.value })}
+                placeholder={
+                  initialIsEncrypted && !keyModified
+                    ? "已加密（留空保持原密钥）"
+                    : m.type === "external"
+                    ? "sk-…"
+                    : "本地可留空"
+                }
+                onChange={(e) => {
+                  setKeyModified(true);
+                  set({ api_key: e.target.value });
+                }}
               />
               <button
                 type="button"
@@ -296,8 +355,8 @@ function ModelForm({
           <Btn variant="ghost" onClick={onClose}>
             取消
           </Btn>
-          <Btn variant="primary" onClick={submit}>
-            保存模型
+          <Btn variant="primary" onClick={() => void submit()} disabled={saving}>
+            {saving ? "保存中…" : "保存模型"}
           </Btn>
         </div>
       </div>
@@ -330,6 +389,112 @@ export default function Models() {
   const [delTarget, setDelTarget] = useState<ModelProvider | null>(null);
   const [tests, setTests] = useState<Record<string, TestState>>({});
   const [confirmExternal, setConfirmExternal] = useState(false);
+  const [sessionPassphrase, setSessionPassphrase] = useState<string | null>(
+    () => sessionMasterPassphrase
+  );
+  const [passphraseInput, setPassphraseInput] = useState("");
+  const [showPassphrase, setShowPassphrase] = useState(false);
+  const [cryptoBusy, setCryptoBusy] = useState(false);
+
+  const updateSessionPassphrase = (next: string | null) => {
+    sessionMasterPassphrase = next;
+    setSessionPassphrase(next);
+  };
+
+  const encryptedModels = models.filter((m) => isEncryptedPayload(m.api_key));
+  const plaintextModels = models.filter(
+    (m) => Boolean(m.api_key) && !isEncryptedPayload(m.api_key)
+  );
+
+  const unlockOrEnablePassphrase = async () => {
+    const pass = passphraseInput;
+    if (!pass) {
+      toast("warn", "请输入本地主密码");
+      return;
+    }
+    setCryptoBusy(true);
+    try {
+      if (encryptedModels.length > 0) {
+        // Verify passphrase against the first encrypted key before unlocking.
+        await decryptText(encryptedModels[0].api_key, pass);
+        updateSessionPassphrase(pass);
+        setPassphraseInput("");
+        toast("ok", "主密码已解锁（仅保存在当前会话内存）");
+      } else {
+        updateSessionPassphrase(pass);
+        setPassphraseInput("");
+        let encryptedCount = 0;
+        for (const m of plaintextModels) {
+          const encryptedKey = await encryptText(m.api_key, pass);
+          saveModel({ ...m, api_key: encryptedKey });
+          encryptedCount += 1;
+        }
+        toast(
+          "ok",
+          encryptedCount > 0
+            ? `已启用主密码并加密 ${encryptedCount} 个 API Key`
+            : "已启用会话主密码，后续保存的 API Key 将自动加密"
+        );
+      }
+    } catch (err) {
+      toast(
+        "err",
+        err instanceof Error ? err.message : "主密码校验失败，请重试"
+      );
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  const encryptAllPlaintextKeys = async () => {
+    if (!sessionPassphrase) return;
+    if (plaintextModels.length === 0) {
+      toast("info", "当前没有待加密的明文 API Key");
+      return;
+    }
+    setCryptoBusy(true);
+    try {
+      for (const m of plaintextModels) {
+        const encryptedKey = await encryptText(m.api_key, sessionPassphrase);
+        saveModel({ ...m, api_key: encryptedKey });
+      }
+      toast("ok", `已加密 ${plaintextModels.length} 个明文 API Key`);
+    } catch (err) {
+      toast("err", err instanceof Error ? err.message : "加密失败");
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  const decryptAllToPlaintext = async () => {
+    if (!sessionPassphrase) return;
+    if (encryptedModels.length === 0) {
+      updateSessionPassphrase(null);
+      toast("info", "当前没有已加密的 API Key，已退出加密模式");
+      return;
+    }
+    setCryptoBusy(true);
+    try {
+      const decryptedPairs: Array<{ model: ModelProvider; plain: string }> = [];
+      for (const m of encryptedModels) {
+        const plain = await decryptText(m.api_key, sessionPassphrase);
+        decryptedPairs.push({ model: m, plain });
+      }
+      for (const { model, plain } of decryptedPairs) {
+        saveModel({ ...model, api_key: plain });
+      }
+      updateSessionPassphrase(null);
+      toast(
+        "ok",
+        `已将 ${decryptedPairs.length} 个 API Key 恢复为明文存储并清除主密码`
+      );
+    } catch (err) {
+      toast("err", err instanceof Error ? err.message : "解密失败");
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
   const localModel = models.find((m) => m.enabled && m.type !== "external");
   const externalModel = models.find((m) => m.enabled && m.type === "external");
   const modeLabel = localModel
@@ -339,8 +504,25 @@ export default function Models() {
     : "本地规则，无需连接服务";
 
   const runTest = async (p: ModelProvider) => {
+    let target = p;
+    if (isEncryptedPayload(p.api_key)) {
+      if (!sessionPassphrase) {
+        toast("warn", "该模型 API Key 已加密，请先解锁本地主密码");
+        return;
+      }
+      try {
+        const plainKey = await decryptText(p.api_key, sessionPassphrase);
+        target = { ...p, api_key: plainKey };
+      } catch (err) {
+        toast(
+          "err",
+          err instanceof Error ? err.message : "API Key 解密失败"
+        );
+        return;
+      }
+    }
     setTests((t) => ({ ...t, [p.id]: { running: true } }));
-    const r = await testProvider(p);
+    const r = await testProvider(target);
     setTests((t) => ({
       ...t,
       [p.id]: {
@@ -477,6 +659,125 @@ export default function Models() {
         </div>
       </section>
 
+      {/* 本地主密码加密 API Key */}
+      <section
+        className="anim-fade-up rounded-2xl border border-ink-200 bg-paper-25 p-5"
+        style={{ animationDelay: "0.08s" }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span
+              className={cx(
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                sessionPassphrase
+                  ? "bg-ok-bg text-ok"
+                  : encryptedModels.length > 0
+                  ? "bg-seal-100 text-seal-600"
+                  : "bg-paper-100 text-ink-600"
+              )}
+            >
+              <IconLock size={18} />
+            </span>
+            <div>
+              <h2 className="text-[15px] font-bold text-ink-900">
+                本地主密码加密 API Key
+                <span className="ml-2 rounded-md bg-paper-200 px-1.5 py-0.5 text-[11px] font-medium text-ink-500">
+                  可选
+                </span>
+              </h2>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-ink-500">
+                {sessionPassphrase
+                  ? `主密码已在当前会话内存解锁（已加密 ${encryptedModels.length} 个，明文 ${plaintextModels.length} 个）。主密码不会写入本地存储。`
+                  : encryptedModels.length > 0
+                  ? `检测到 ${encryptedModels.length} 个已加密 API Key，当前处于锁定状态；输入主密码解锁后可编辑或测试连接。`
+                  : "未设置主密码时保持明文存储与旧版完全兼容；设置后将使用 Web Crypto AES-GCM 加密保存的 API Key。"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {!sessionPassphrase ? (
+          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3.5">
+            <div className="relative min-w-[220px] flex-1">
+              <input
+                type={showPassphrase ? "text" : "password"}
+                className="field-input pr-8 font-mono"
+                value={passphraseInput}
+                onChange={(e) => setPassphraseInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void unlockOrEnablePassphrase();
+                }}
+                placeholder={
+                  encryptedModels.length > 0
+                    ? "输入本地主密码以解锁…"
+                    : "设置本地主密码（仅保存在会话内存）…"
+                }
+                aria-label="本地主密码"
+              />
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-500 hover:text-ink-700"
+                onClick={() => setShowPassphrase((v) => !v)}
+                aria-label="显示/隐藏主密码"
+              >
+                {showPassphrase ? (
+                  <IconEyeOff size={14} />
+                ) : (
+                  <IconEye size={14} />
+                )}
+              </button>
+            </div>
+            <Btn
+              variant="primary"
+              className="h-9 text-[12.5px]"
+              disabled={cryptoBusy || !passphraseInput}
+              onClick={() => void unlockOrEnablePassphrase()}
+            >
+              <IconLock size={13} />{" "}
+              {cryptoBusy
+                ? "处理中…"
+                : encryptedModels.length > 0
+                ? "解锁主密码"
+                : "启用并加密现有密钥"}
+            </Btn>
+          </div>
+        ) : (
+          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3.5">
+            {plaintextModels.length > 0 && (
+              <Btn
+                variant="primary"
+                className="h-8 text-[12px]"
+                disabled={cryptoBusy}
+                onClick={() => void encryptAllPlaintextKeys()}
+              >
+                加密 {plaintextModels.length} 个明文 Key
+              </Btn>
+            )}
+            {encryptedModels.length > 0 && (
+              <Btn
+                variant="outline"
+                className="h-8 text-[12px]"
+                disabled={cryptoBusy}
+                onClick={() => void decryptAllToPlaintext()}
+              >
+                解密为明文（移除加密）
+              </Btn>
+            )}
+            <Btn
+              variant="ghost"
+              className="h-8 text-[12px]"
+              disabled={cryptoBusy}
+              onClick={() => {
+                updateSessionPassphrase(null);
+                toast("info", "已锁定：会话主密码已从内存清除");
+              }}
+            >
+              锁定会话
+            </Btn>
+          </div>
+        )}
+      </section>
+
       {/* 模型列表 */}
       <section className="anim-fade-up" style={{ animationDelay: "0.1s" }}>
         <div className="mb-2.5 flex items-center justify-between">
@@ -544,7 +845,14 @@ export default function Models() {
                 </div>
                 <details className="mt-2 text-[12px] text-ink-500">
                   <summary className="cursor-pointer">
-                    连接参数{m.api_key ? " · 已配置密钥" : ""}
+                    连接参数
+                    {m.api_key
+                      ? isEncryptedPayload(m.api_key)
+                        ? sessionPassphrase
+                          ? " · 已加密（已解锁）"
+                          : " · 已加密（已锁定）"
+                        : " · 已配置密钥"
+                      : ""}
                   </summary>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <span className="chip bg-paper-200 text-ink-600">
@@ -666,7 +974,11 @@ export default function Models() {
       </section>
 
       {formOpen && (
-        <ModelForm initial={editing} onClose={() => setFormOpen(false)} />
+        <ModelForm
+          initial={editing}
+          sessionPassphrase={sessionPassphrase}
+          onClose={() => setFormOpen(false)}
+        />
       )}
 
       <Confirm
