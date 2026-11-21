@@ -114,6 +114,7 @@ function renderRich(text: string): ReactNode {
 interface TStyle {
   color: string;
   isATS: boolean;
+  variant?: "modern" | "ats" | "latex" | "campus";
   bullet: "disc" | "diamond";
   bulletStyle: BulletStyleKey;
   skill: "text" | "chip";
@@ -196,7 +197,10 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
               <SubTitles block={block} className="font-normal text-ink-500" />
             </p>
             {dateRange(block) && (
-              <p className="shrink-0 text-[0.82em] font-medium tabular-nums" style={{ color: isATS ? "#222" : "#64716c" }}>
+              <p
+                className={cx("shrink-0 text-[0.82em] font-medium tabular-nums", style.variant === "latex" && "font-mono")}
+                style={{ color: isATS ? "#222" : "#64716c" }}
+              >
                 {dateRange(block)}
               </p>
             )}
@@ -220,14 +224,19 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
       {block.skills.length > 0 &&
         (skill === "text" ? (
           <p className="mt-[var(--entry-gap)] text-[0.9em]" style={{ color: isATS ? "#333" : undefined }}>
-            {block.skills.join("  ·  ")}
+            {block.skills.join(style.variant === "latex" ? ", " : "  ·  ")}
           </p>
         ) : (
           <div className="mt-[var(--entry-gap)] flex flex-wrap gap-1">
             {block.skills.map((sk) => (
               <span
                 key={sk}
-                className="rounded-[3px] px-1.5 py-[0.12em] text-[0.78em] font-medium"
+                className={cx(
+                  "font-medium",
+                  style.variant === "campus"
+                    ? "rounded-full px-2 py-[0.08em] text-[0.76em]"
+                    : "rounded-[3px] px-1.5 py-[0.12em] text-[0.78em]"
+                )}
                 style={{ background: `${color}17`, color, boxShadow: `inset 0 0 0 1px ${color}30` }}
               >
                 {sk}
@@ -324,20 +333,37 @@ function SectionBlock({ section, style }: { section: Section; style: TStyle }) {
   const blocks = visibleBlocks(section);
   if (section.type === "summary" && !blocks.some(blockHasContent)) return null;
   if (blocks.length === 0 && section.type !== "summary") return null;
-  const { color, isATS } = style;
+  const { color, isATS, variant } = style;
+  const isLatex = variant === "latex";
+  const isCampus = variant === "campus";
   // 模块级要点样式优先，未设置时继承全局默认
   const secStyle: TStyle = { ...style, bulletStyle: resolveBulletStyle(section.bullet_style, style.bulletStyle) };
   return (
-    <section data-resume-section={section.section_id} className="mb-[var(--sec-gap)]">
+    <section
+      data-resume-section={section.section_id}
+      className={cx(
+        "mb-[var(--sec-gap)]",
+        isCampus && section.type === "education" && "rounded-md px-2.5 py-2"
+      )}
+      style={isCampus && section.type === "education" ? { background: `${color}08`, boxShadow: `inset 0 0 0 1px ${color}1f` } : undefined}
+    >
       <h2
-        className={cx("mb-[var(--head-gap)] text-[1.12em] font-bold", !isATS && "flex items-center gap-[0.5em]")}
+        className={cx(
+          "mb-[var(--head-gap)] font-bold",
+          isLatex ? "text-[1.04em]" : isCampus ? "flex items-center gap-[0.45em] text-[1.05em]" : "text-[1.12em]",
+          !isATS && !isLatex && !isCampus && "flex items-center gap-[0.5em]"
+        )}
         style={
-          isATS
-            ? { borderBottom: `${RULE_PX_SOLID}px solid #111`, paddingBottom: "0.26em", color: "#111", textTransform: "uppercase", letterSpacing: "0.08em", breakAfter: "avoid" }
-            : { color, letterSpacing: "0.02em", breakAfter: "avoid" }
+          isLatex
+            ? { borderBottom: "1px solid #111", paddingBottom: "0.18em", color: "#111", textTransform: "uppercase", letterSpacing: "0.08em", breakAfter: "avoid" }
+            : isATS
+              ? { borderBottom: `${RULE_PX_SOLID}px solid #111`, paddingBottom: "0.26em", color: "#111", textTransform: "uppercase", letterSpacing: "0.08em", breakAfter: "avoid" }
+              : isCampus
+                ? { borderLeft: `3px solid ${color}`, paddingLeft: "0.45em", color, letterSpacing: "0.02em", breakAfter: "avoid" }
+                : { color, letterSpacing: "0.02em", breakAfter: "avoid" }
         }
       >
-        {!isATS && <SectionBadge section={section} color={color} shape="squircle" />}
+        {!isATS && !isCampus && <SectionBadge section={section} color={color} shape="squircle" />}
         {section.title}
         {!isATS && <SectionRule color={color} />}
       </h2>
@@ -470,14 +496,42 @@ function AcademicPhotoSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
   );
 }
 
+/** 校招紧凑模板：保留 summary 在最前（若有），将 education 置顶突出，其余模块维持原 order */
+function campusOrderedSections(sections: Section[]): Section[] {
+  const rank = (s: Section) => (s.type === "summary" ? 0 : s.type === "education" ? 1 : 2);
+  return [...sections].sort((a, b) => rank(a) - rank(b) || a.order - b.order);
+}
+
+function ContactBar({ contacts, className, separator = "|" }: { contacts: string[]; className?: string; separator?: string }) {
+  if (contacts.length === 0) return null;
+  return (
+    <div className={cx("flex flex-wrap items-center gap-y-1", className)}>
+      {contacts.map((c, idx) => (
+        <span key={c} className="inline-flex items-center">
+          <span>{renderRich(c)}</span>
+          {idx < contacts.length - 1 && (
+            <span className="mx-2.5 text-ink-300" aria-hidden="true">
+              {separator}
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
   if (resume.template_id === "academic_photo") {
     return <AcademicPhotoSheet resume={resume} forPrint={forPrint} />;
   }
 
   const isATS = resume.template_id === "classic_ats";
-  const color = isATS ? "#111111" : resume.theme.primary_color;
+  const isLatex = resume.template_id === "latex_minimal";
+  const isCampus = resume.template_id === "campus_compact";
+  const color = isATS || isLatex ? "#111111" : resume.theme.primary_color;
   const fs = resume.theme.font_size;
+  const effectiveDensity = resume.theme.density ?? (isCampus || isLatex ? "compact" : undefined);
+  const effectiveFont = resume.theme.font_family ?? (isLatex ? "serif" : undefined);
 
   // 基本信息模块：visible=false 时整个 header（姓名/职位/联系）不渲染，语义一致
   const basicSection = resume.data.sections.find((s) => s.type === "basic_info");
@@ -485,28 +539,53 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
   const info = resume.data.basic_info;
   const contacts = contactItems(info);
 
-  const style: TStyle = isATS
-    ? { color: "#111111", isATS: true, bullet: "disc", bulletStyle: resume.theme.bullet_style ?? "disc", skill: "text", showLocation: true, headerLayout: resume.theme.header_layout ?? "row" }
-    : { color, isATS: false, bullet: "diamond", bulletStyle: resume.theme.bullet_style ?? "diamond", skill: "chip", showLocation: true, headerLayout: resume.theme.header_layout ?? "row" };
+  const style: TStyle = isLatex
+    ? { color: "#111111", isATS: true, variant: "latex", bullet: "disc", bulletStyle: resume.theme.bullet_style ?? "disc", skill: "text", showLocation: true, headerLayout: resume.theme.header_layout ?? "row" }
+    : isATS
+      ? { color: "#111111", isATS: true, variant: "ats", bullet: "disc", bulletStyle: resume.theme.bullet_style ?? "disc", skill: "text", showLocation: true, headerLayout: resume.theme.header_layout ?? "row" }
+      : isCampus
+        ? { color, isATS: false, variant: "campus", bullet: "disc", bulletStyle: resume.theme.bullet_style ?? "disc", skill: "chip", showLocation: true, headerLayout: resume.theme.header_layout ?? "row" }
+        : { color, isATS: false, variant: "modern", bullet: "diamond", bulletStyle: resume.theme.bullet_style ?? "diamond", skill: "chip", showLocation: true, headerLayout: resume.theme.header_layout ?? "row" };
 
-  const bodySections = orderedVisible(resume.data).filter((s) => s.type !== "basic_info");
+  const rawBodySections = orderedVisible(resume.data).filter((s) => s.type !== "basic_info");
+  const bodySections = isCampus ? campusOrderedSections(rawBodySections) : rawBodySections;
+  const campusRole = info.title || resume.target?.job_title || "";
 
   const headerEl =
-    basicVisible && (info.name || info.title || contacts.length > 0) ? (
-      isATS ? (
+    basicVisible && (info.name || info.title || contacts.length > 0 || (isCampus && campusRole)) ? (
+      isLatex ? (
+        <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)] text-center">
+          <h1 className="text-[2.1em] font-bold leading-tight tracking-tight text-[#111]">{renderRich(info.name || "未命名")}</h1>
+          {info.title && <p className="mt-0.5 text-[0.98em] italic text-[#333]">{renderRich(info.title)}</p>}
+          <ContactBar contacts={contacts} className="mt-1.5 justify-center font-mono text-[0.8em] text-[#222]" />
+        </header>
+      ) : isATS ? (
         <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)] text-center">
           <h1 className="text-[2.1em] font-bold leading-tight tracking-wide">{renderRich(info.name || "未命名")}</h1>
           {info.title && <p className="mt-0.5 text-[1.05em] font-medium">{renderRich(info.title)}</p>}
-          {contacts.length > 0 && (
-            <p className="mt-2 flex flex-wrap items-center justify-center gap-y-1 text-[0.85em] text-[#333]">
-              {contacts.map((c, idx) => (
-                <span key={c} className="inline-flex items-center">
-                  <span>{renderRich(c)}</span>
-                  {idx < contacts.length - 1 && <span className="mx-3 text-ink-300" aria-hidden="true">|</span>}
+          <ContactBar contacts={contacts} className="mt-2 justify-center text-[0.85em] text-[#333]" />
+        </header>
+      ) : isCampus ? (
+        <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)] border-b pb-[var(--head-gap)]" style={{ borderColor: `${color}30` }}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div className="flex flex-wrap items-baseline gap-2.5">
+              <h1 className="font-[700] leading-tight" style={{ fontSize: "1.95em", color: "#101817", letterSpacing: "-0.01em" }}>
+                {renderRich(info.name || "未命名")}
+              </h1>
+              {campusRole && (
+                <span
+                  className="rounded-full px-2.5 py-[0.12em] text-[0.86em] font-semibold"
+                  style={{ background: `${color}15`, color, boxShadow: `inset 0 0 0 1px ${color}33` }}
+                >
+                  {renderRich(campusRole)}
                 </span>
-              ))}
-            </p>
-          )}
+              )}
+            </div>
+            {resume.target?.company && (
+              <span className="text-[0.82em] font-medium text-ink-500">{resume.target.company}</span>
+            )}
+          </div>
+          <ContactBar contacts={contacts} className="mt-1.5 text-[0.82em] text-ink-500" />
         </header>
       ) : (
         <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)]">
@@ -531,16 +610,7 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
               </span>
             </div>
           </div>
-          {contacts.length > 0 && (
-            <div className="mt-[var(--head-gap)] flex flex-wrap items-center gap-y-1 text-[0.85em] text-ink-500">
-              {contacts.map((c, idx) => (
-                <span key={c} className="inline-flex items-center">
-                  <span>{renderRich(c)}</span>
-                  {idx < contacts.length - 1 && <span className="mx-3 text-ink-300" aria-hidden="true">|</span>}
-                </span>
-              ))}
-            </div>
-          )}
+          <ContactBar contacts={contacts} className="mt-[var(--head-gap)] text-[0.85em] text-ink-500" />
         </header>
       )
     ) : null;
@@ -548,7 +618,7 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
   return (
     <div
       className={cx("resume-sheet bg-white", !forPrint && "shadow-xl shadow-ink-950/15")}
-      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density) }}
+      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(effectiveFont), ...densityVars(effectiveDensity) }}
     >
       {headerEl}
       <main>
@@ -563,8 +633,9 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
 /** A4 尺寸容器：794 x 1123 px @96dpi */
 export function A4Sheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
   const prepared = localizedResume(resume);
+  const effectiveDensity = resume.theme.density ?? (resume.template_id === "campus_compact" || resume.template_id === "latex_minimal" ? "compact" : undefined);
   return (
-    <div className="resume-sheet-wrap bg-white" style={{ width: forPrint ? "210mm" : 794, minHeight: forPrint ? "297mm" : 1123, ...densityVars(resume.theme.density) }}>
+    <div className="resume-sheet-wrap bg-white" style={{ width: forPrint ? "210mm" : 794, minHeight: forPrint ? "297mm" : 1123, ...densityVars(effectiveDensity) }}>
       <div style={{ minHeight: forPrint ? "297mm" : 1123, padding: "var(--page-pad-y) var(--page-pad-x)" }}>
         <ResumeSheet resume={prepared} forPrint={forPrint} />
       </div>

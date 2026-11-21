@@ -321,7 +321,7 @@ export interface Suggestion {
 export interface TemplateConfig {
   template_id: string;
   name: string;
-  layout: "single_column" | "ats" | "photo_header";
+  layout: "single_column" | "ats" | "photo_header" | "latex" | "compact";
   description: string;
 }
 
@@ -343,6 +343,18 @@ export const TEMPLATES: TemplateConfig[] = [
     name: "学术双栏",
     layout: "photo_header",
     description: "头像页眉 · 双栏布局",
+  },
+  {
+    template_id: "latex_minimal",
+    name: "海外英文极简 / LaTeX 风格",
+    layout: "latex",
+    description: "居中姓名 · 衬线极简 · 英文/海外投递",
+  },
+  {
+    template_id: "campus_compact",
+    name: "校招紧凑一页",
+    layout: "compact",
+    description: "教育置顶 · 技能标签 · 一页高密度",
   },
 ];
 
