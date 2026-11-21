@@ -18,6 +18,7 @@ import type {
   AIAction,
   Block,
   MatchReport,
+  ModelProvider,
   Resume,
   Section,
   Suggestion,
@@ -28,9 +29,19 @@ import { useApp, useAppSlice } from "../lib/store";
 import {
   matchResumeData,
   parseJD,
+  parseJDSemantically,
   jdEvidence,
   qualificationEvidence,
+  type JDStructuredSemantic,
 } from "../lib/jd";
+import {
+  auditResume,
+  enhanceAuditWithAI,
+  type AuditAISuggestion,
+  type AuditCategory,
+  type AuditReport,
+} from "../lib/audit";
+import { selectProvider } from "../lib/ai";
 import { SAMPLE_JD_TEXT } from "../lib/samples";
 import { blockContent } from "../lib/backup";
 import { celebrate } from "../lib/celebrate";
@@ -282,12 +293,91 @@ const STATUS_CHIP: Record<string, { text: string; cls: string }> = {
   rejected: { text: "已拒绝", cls: "bg-paper-200 text-ink-400" },
 };
 
+const AUDIT_CATEGORY_LABEL: Record<AuditCategory, string> = {
+  timeline_gap: "时间线断层",
+  repeated_verb: "动词重复",
+  cjk_spacing: "中英空格",
+  missing_metric: "量化指标",
+};
+
+function providerHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url || "外部服务";
+  }
+}
+
+function locateBlockInEditor(sectionId: string, blockId?: string) {
+  const target =
+    (blockId
+      ? document.querySelector<HTMLElement>(`[data-block-id="${blockId}"]`)
+      : null) ||
+    document.querySelector<HTMLElement>(`[data-section-id="${sectionId}"]`);
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus?.({ preventScroll: true });
+  }
+}
+
+function ExternalConfirmModal({
+  provider,
+  dataSummary,
+  onConfirm,
+  onCancel,
+}: {
+  provider: ModelProvider | null;
+  dataSummary: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!provider) return null;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div
+        className="anim-fade-in absolute inset-0 bg-ink-950/55"
+        onClick={onCancel}
+      />
+      <div className="anim-scale-in relative w-full max-w-sm rounded-xl bg-paper-25 p-5 shadow-2xl ring-1 ring-ink-900/10">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-seal-100 text-seal-600">
+            <IconAlert size={17} />
+          </span>
+          <div>
+            <h3 className="text-[15px] font-bold text-ink-900">
+              即将调用外部模型
+            </h3>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
+              继续将把
+              <strong className="text-ink-800">{dataSummary}</strong>
+              发送到外部服务
+              <strong className="text-ink-800">「{provider.name}」</strong>（
+              {providerHost(provider.base_url)}
+              ）进行处理。本次确认仅授权当前请求。
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Btn variant="ghost" onClick={onCancel}>
+            取消，保持本地
+          </Btn>
+          <Btn variant="seal" onClick={onConfirm}>
+            确认发送
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AIPanel({
   resume,
   activeTarget,
+  onLocate,
 }: {
   resume: Resume;
   activeTarget: { sectionId: string; blockId: string } | null;
+  onLocate?: (sectionId: string, blockId?: string) => void;
 }) {
   const {
     suggestions,
@@ -299,6 +389,9 @@ export function AIPanel({
     cancelSuggestion,
     undoSuggestion,
     queuedSuggestionCount,
+    models,
+    privacy,
+    toast,
   } = useAppSlice(
     "suggestions",
     "requestSuggestion",
@@ -308,8 +401,86 @@ export function AIPanel({
     "confirmExternal",
     "cancelSuggestion",
     "undoSuggestion",
-    "queuedSuggestionCount"
+    "queuedSuggestionCount",
+    "models",
+    "privacy",
+    "toast"
   );
+  const [panelMode, setPanelMode] = useState<"suggestions" | "audit">(
+    "suggestions"
+  );
+  const [auditState, setAuditState] = useState<{
+    report: AuditReport;
+    data: Resume["data"];
+  } | null>(null);
+  const [auditFilter, setAuditFilter] = useState<AuditCategory | "all">("all");
+  const [auditAI, setAuditAI] = useState<{
+    loading: boolean;
+    suggestions: AuditAISuggestion[];
+    providerName?: string;
+    error?: string;
+  }>({ loading: false, suggestions: [] });
+  const [auditPendingProvider, setAuditPendingProvider] =
+    useState<ModelProvider | null>(null);
+
+  const auditReport =
+    auditState?.data === resume.data ? auditState.report : null;
+
+  const runAudit = () => {
+    const report = auditResume(resume);
+    setAuditState({ report, data: resume.data });
+    setAuditAI({ loading: false, suggestions: [] });
+    toast(
+      report.total ? "info" : "ok",
+      report.total
+        ? `体检完成：发现 ${report.total} 项可优化处`
+        : "体检完成：未发现明显规则问题"
+    );
+  };
+
+  const runAuditAI = async (confirmedExternal = false) => {
+    const report = auditReport ?? auditResume(resume);
+    if (!auditReport) setAuditState({ report, data: resume.data });
+    const sel = selectProvider(models, privacy);
+    if (sel.kind === "rules") {
+      toast(
+        "info",
+        "当前未启用可用模型，已保留本地规则体检结果；可在「模型」页启用本地或外部模型。"
+      );
+      return;
+    }
+    if (sel.kind === "confirm_external" && !confirmedExternal) {
+      setAuditPendingProvider(sel.provider);
+      return;
+    }
+    setAuditPendingProvider(null);
+    setAuditAI((s) => ({ ...s, loading: true, error: undefined }));
+    const res = await enhanceAuditWithAI(resume, report, {
+      models,
+      privacy,
+      confirmedExternal,
+    });
+    if (res.usedAI) {
+      setAuditAI({
+        loading: false,
+        suggestions: res.suggestions,
+        providerName: res.providerName,
+      });
+      toast("ok", `AI 深度体检建议已生成（${res.suggestions.length} 条）`);
+    } else {
+      setAuditAI({
+        loading: false,
+        suggestions: [],
+        error: res.error,
+      });
+      if (res.error) toast("warn", res.error);
+    }
+  };
+
+  const handleLocate = (sectionId: string, blockId?: string) => {
+    if (onLocate) onLocate(sectionId, blockId);
+    else locateBlockInEditor(sectionId, blockId);
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<{
@@ -379,13 +550,194 @@ export function AIPanel({
       )}
       <div className="flex items-center justify-between px-4 pb-2 pt-3.5">
         <h2 className="flex items-center gap-1.5 text-[12px] font-bold  text-ink-400">
-          <IconWand size={13} className="text-brand-600" /> AI 建议
+          <IconWand size={13} className="text-brand-600" /> AI 建议与体检
         </h2>
-        <span className="font-mono text-[12px] text-ink-500">
-          {list.length} 条记录
-        </span>
+        <div className="flex items-center gap-1 rounded-lg bg-paper-200 p-0.5 text-[11.5px]">
+          <button
+            type="button"
+            onClick={() => setPanelMode("suggestions")}
+            className={cx(
+              "rounded-md px-2 py-0.5 font-medium transition",
+              panelMode === "suggestions"
+                ? "bg-white text-ink-900 shadow-xs"
+                : "text-ink-500 hover:text-ink-800"
+            )}
+          >
+            模块建议 ({list.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPanelMode("audit");
+              if (!auditReport) runAudit();
+            }}
+            className={cx(
+              "rounded-md px-2 py-0.5 font-medium transition",
+              panelMode === "audit"
+                ? "bg-white text-ink-900 shadow-xs"
+                : "text-ink-500 hover:text-ink-800"
+            )}
+          >
+            全简历体检
+          </button>
+        </div>
       </div>
 
+      {panelMode === "audit" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+          <div className="mb-3 flex gap-2">
+            <Btn variant="primary" className="h-8 flex-1" onClick={runAudit}>
+              <IconRefresh size={12} /> 一键全简历体检
+            </Btn>
+            <Btn
+              variant="outline"
+              className="h-8"
+              disabled={auditAI.loading}
+              onClick={() => runAuditAI(false)}
+            >
+              <IconSpark size={12} /> {auditAI.loading ? "分析中…" : "AI 深度建议"}
+            </Btn>
+          </div>
+
+          {auditReport && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3 rounded-xl border border-ink-200 bg-white p-3">
+                <ScoreRing score={auditReport.score} label="体检参考" />
+                <div className="min-w-0 flex-1 text-[12px] text-ink-600">
+                  <p className="font-bold text-ink-800">
+                    共扫描 {auditReport.scannedBlocks} 个条目 ·{" "}
+                    {auditReport.scannedBullets} 条要点
+                  </p>
+                  <p className="mt-1 text-ink-500">
+                    {auditReport.total
+                      ? `发现 ${auditReport.total} 项可优化处，点击「定位到此处」可直接跳转编辑。`
+                      : "未发现时间线断层、动词重复、中英空格或量化缺失问题。"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAuditFilter("all")}
+                  className={cx(
+                    "chip transition",
+                    auditFilter === "all"
+                      ? "bg-brand-700 text-white"
+                      : "bg-paper-200 text-ink-600"
+                  )}
+                >
+                  全部 ({auditReport.total})
+                </button>
+                {(
+                  Object.keys(AUDIT_CATEGORY_LABEL) as AuditCategory[]
+                ).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setAuditFilter(cat)}
+                    className={cx(
+                      "chip transition",
+                      auditFilter === cat
+                        ? "bg-brand-700 text-white"
+                        : "bg-paper-200 text-ink-600"
+                    )}
+                  >
+                    {AUDIT_CATEGORY_LABEL[cat]} ({auditReport.counts[cat]})
+                  </button>
+                ))}
+              </div>
+
+              {auditAI.suggestions.length > 0 && (
+                <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3">
+                  <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-brand-800">
+                    <IconSpark size={12} /> AI 深度改进建议
+                    {auditAI.providerName ? ` · ${auditAI.providerName}` : ""}
+                  </p>
+                  <ul className="flex flex-col gap-2">
+                    {auditAI.suggestions.map((item, idx) => (
+                      <li
+                        key={idx}
+                        className="rounded-lg bg-white p-2.5 text-[12px] shadow-2xs"
+                      >
+                        <p className="text-ink-800">{item.advice}</p>
+                        {item.example && (
+                          <p className="mt-1 text-[11.5px] text-ink-500">
+                            示例：{item.example}
+                          </p>
+                        )}
+                        {item.sectionId && item.blockId && (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11.5px] font-medium text-brand-700 underline"
+                            onClick={() =>
+                              handleLocate(item.sectionId!, item.blockId)
+                            }
+                          >
+                            定位到此处
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <ul className="flex flex-col gap-2">
+                {auditReport.issues
+                  .filter(
+                    (i) => auditFilter === "all" || i.category === auditFilter
+                  )
+                  .map((issue) => (
+                    <li
+                      key={issue.id}
+                      className="rounded-xl border border-ink-200 bg-white p-3 text-[12px]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={cx(
+                            "chip",
+                            issue.severity === "warning"
+                              ? "bg-seal-100 text-seal-700"
+                              : "bg-paper-200 text-ink-600"
+                          )}
+                        >
+                          {AUDIT_CATEGORY_LABEL[issue.category]}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleLocate(issue.sectionId, issue.blockId)
+                          }
+                          className="text-[11.5px] font-medium text-brand-700 underline hover:text-brand-800"
+                        >
+                          定位到此处
+                        </button>
+                      </div>
+                      <p className="mt-1.5 font-bold text-ink-800">
+                        {issue.blockTitle} · {issue.message}
+                      </p>
+                      <p className="mt-1 leading-relaxed text-ink-600">
+                        {issue.detail}
+                      </p>
+                      <p className="mt-1 leading-relaxed text-ink-500">
+                        建议：{issue.suggestion}
+                      </p>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+
+          <ExternalConfirmModal
+            provider={auditPendingProvider}
+            dataSummary="简历摘要与本地体检发现"
+            onCancel={() => setAuditPendingProvider(null)}
+            onConfirm={() => runAuditAI(true)}
+          />
+        </div>
+      ) : (
+        <>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {!active && (
           <Empty
@@ -793,6 +1145,8 @@ export function AIPanel({
           </div>
         </div>
       )}
+      </>
+      )}
     </div>
   );
 }
@@ -806,10 +1160,22 @@ export function JDPanel({
   resume: Resume;
   onLocate?: (sectionId: string, blockId?: string) => void;
 }) {
-  const { setJD, toast } = useAppSlice("setJD", "toast");
+  const { setJD, toast, models, privacy } = useAppSlice(
+    "setJD",
+    "toast",
+    "models",
+    "privacy"
+  );
   const jd = useApp((s) => s.jds[resume.id]);
   const [raw, setRaw] = useState("");
   const [editingJD, setEditingJD] = useState(false);
+  const [semanticState, setSemanticState] = useState<{
+    jdId: string;
+    semantic: JDStructuredSemantic;
+  } | null>(null);
+  const [deepParsing, setDeepParsing] = useState(false);
+  const [jdPendingProvider, setJdPendingProvider] =
+    useState<ModelProvider | null>(null);
   const [analysis, setAnalysis] = useState<{
     report: MatchReport;
     data: Resume["data"];
@@ -819,6 +1185,8 @@ export function JDPanel({
     analysis?.data === resume.data && analysis.jd === jd
       ? analysis.report
       : null;
+  const semantic =
+    jd && semanticState?.jdId === jd.jd_id ? semanticState.semantic : null;
 
   const doParse = (text: string) => {
     if (!text.trim()) {
@@ -828,11 +1196,56 @@ export function JDPanel({
     const parsed = parseJD(text, resume.id);
     setJD(resume.id, parsed);
     setAnalysis(null);
+    setSemanticState(null);
     setEditingJD(false);
     toast(
       "ok",
       `JD 解析完成：提取 ${parsed.structured.skills.length} 项技能、${parsed.structured.keywords.length} 个关键词`
     );
+  };
+
+  const doDeepParse = async (text: string, confirmedExternal = false) => {
+    if (!text.trim()) {
+      toast("warn", "JD 内容不能为空");
+      return;
+    }
+    const sel = selectProvider(models, privacy);
+    if (sel.kind === "rules") {
+      const res = await parseJDSemantically(text, resume.id, {
+        models,
+        privacy,
+      });
+      setJD(resume.id, res.jd);
+      setSemanticState({ jdId: res.jd.jd_id, semantic: res.semantic });
+      setAnalysis(null);
+      setEditingJD(false);
+      toast("info", "当前未启用可用模型，已使用本地规则解析并生成基础同义词");
+      return;
+    }
+    if (sel.kind === "confirm_external" && !confirmedExternal) {
+      setJdPendingProvider(sel.provider);
+      return;
+    }
+    setJdPendingProvider(null);
+    setDeepParsing(true);
+    const res = await parseJDSemantically(text, resume.id, {
+      models,
+      privacy,
+      confirmedExternal,
+    });
+    setDeepParsing(false);
+    setJD(resume.id, res.jd);
+    setSemanticState({ jdId: res.jd.jd_id, semantic: res.semantic });
+    setAnalysis(null);
+    setEditingJD(false);
+    if (res.usedAI) {
+      toast(
+        "ok",
+        `AI 语义解析完成：提取 ${res.semantic.competencies.length} 项胜任力`
+      );
+    } else if (res.error) {
+      toast("warn", `${res.error}，已回退本地规则解析`);
+    }
   };
 
   const doMatch = () => {
@@ -871,6 +1284,14 @@ export function JDPanel({
           <Btn
             variant="outline"
             className="h-8"
+            disabled={deepParsing}
+            onClick={() => doDeepParse(raw, false)}
+          >
+            <IconSpark size={13} /> {deepParsing ? "解析中…" : "AI 语义解析"}
+          </Btn>
+          <Btn
+            variant="outline"
+            className="h-8"
             onClick={() => setRaw(SAMPLE_JD_TEXT)}
           >
             填入示例
@@ -881,6 +1302,12 @@ export function JDPanel({
             </Btn>
           )}
         </div>
+        <ExternalConfirmModal
+          provider={jdPendingProvider}
+          dataSummary="目标岗位 JD 原文"
+          onCancel={() => setJdPendingProvider(null)}
+          onConfirm={() => doDeepParse(raw, true)}
+        />
       </div>
     );
   }
@@ -961,6 +1388,59 @@ export function JDPanel({
             <span className="text-[12px] text-ink-500">未识别到技能词</span>
           )}
         </div>
+
+        <div className="mb-3 rounded-lg border border-ink-200 bg-white p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-[12px] font-bold text-ink-700">
+              <IconSpark size={12} className="text-brand-600" />
+              {semantic?.source === "ai"
+                ? `AI 语义胜任力（${semantic.provider_name ?? "模型"}）`
+                : "胜任力与同义词深度解析"}
+            </span>
+            <Btn
+              variant="outline"
+              className="h-6 px-2 text-[11px]"
+              disabled={deepParsing}
+              onClick={() => doDeepParse(jd.raw_text, false)}
+            >
+              {deepParsing ? "解析中…" : semantic ? "重新深度解析" : "AI 深度解析"}
+            </Btn>
+          </div>
+          {semantic && semantic.competencies.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {semantic.competencies.slice(0, 8).map((c) => (
+                <div
+                  key={c.name}
+                  className="rounded bg-paper-50 px-2 py-1.5 text-[11.5px]"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-ink-800">{c.name}</span>
+                    <span className="chip bg-paper-200 text-[10px] text-ink-600">
+                      {c.category}
+                    </span>
+                  </div>
+                  {c.synonyms.length > 0 && (
+                    <p className="mt-0.5 text-ink-500">
+                      等价词/同义词：{c.synonyms.join("、")}
+                    </p>
+                  )}
+                  {c.evidence_hint && (
+                    <p className="mt-0.5 text-ink-500">
+                      证据方向：{c.evidence_hint}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <ExternalConfirmModal
+          provider={jdPendingProvider}
+          dataSummary="目标岗位 JD 原文"
+          onCancel={() => setJdPendingProvider(null)}
+          onConfirm={() => doDeepParse(jd.raw_text, true)}
+        />
         <details className="mb-3 rounded-lg border border-line p-2">
           <summary className="cursor-pointer text-[12px] font-bold">
             JD 原句与简历依据
