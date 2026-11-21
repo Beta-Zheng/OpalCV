@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { structureResume, emptyResume, joinPageItems, detectMultiColumn } from "../parser";
+import {
+  structureResume,
+  emptyResume,
+  joinPageItems,
+  detectMultiColumn,
+  analyzePdfPages,
+  extractFileText,
+} from "../parser";
 
 const SAMPLE = `张伟
 高级后端工程师
@@ -411,5 +418,133 @@ AWS Certified Solutions Architect 2022
     expect(skills.blocks.length).toBeGreaterThan(0);
     const allSkills = skills.blocks.flatMap((b) => b.skills);
     expect(allSkills.length).toBeGreaterThan(3);
+  });
+});
+
+describe("R7 复杂 PDF 版式解析：多栏 / 混合布局 / 扫描件兜底", () => {
+  const item = (str: string, x: number, y: number, size = 12) => ({
+    str,
+    transform: [size, 0, 0, size, x, y],
+    width: str.length * size * 0.5,
+  });
+
+  it("三栏 PDF：按左栏 → 中栏 → 右栏顺序输出，不交错", () => {
+    const items = [
+      item("C1_0", 40, 800),
+      item("C2_0", 200, 800),
+      item("C3_0", 360, 800),
+      item("C1_1", 40, 770),
+      item("C2_1", 200, 770),
+      item("C3_1", 360, 770),
+      item("C1_2", 40, 740),
+      item("C2_2", 200, 740),
+      item("C3_2", 360, 740),
+    ];
+    const text = joinPageItems(items);
+    expect(text).toBe("C1_0\nC1_1\nC1_2\n\nC2_0\nC2_1\nC2_2\n\nC3_0\nC3_1\nC3_2");
+  });
+
+  it("混合版式（通栏页眉横幅 + 双栏正文）：先输出完整页眉，再依次输出左栏、右栏", () => {
+    const items = [
+      item("Zhang Wei - Senior Full-Stack Engineer & Architect", 50, 820),
+      item("zhangwei@example.com | +86 138-0000-0000 | Shanghai", 50, 795),
+      item("Skills:", 50, 740),
+      item("Experience:", 280, 740),
+      item("TypeScript", 50, 710),
+      item("Acme Corp | Engineer", 280, 710),
+      item("React", 50, 680),
+      item("- Built scalable APIs", 280, 680),
+    ];
+    const text = joinPageItems(items);
+    expect(text).toBe(
+      [
+        "Zhang Wei - Senior Full-Stack Engineer & Architect",
+        "zhangwei@example.com | +86 138-0000-0000 | Shanghai",
+        "",
+        "Skills:",
+        "TypeScript",
+        "React",
+        "",
+        "Experience:",
+        "Acme Corp | Engineer",
+        "- Built scalable APIs",
+      ].join("\n")
+    );
+  });
+
+  it("混合版式（侧边栏 + 宽主栏）：主栏长行不被误拆为独立 y-band，保持先侧边栏后主栏", () => {
+    const items = [
+      item("Contact", 40, 800),
+      item("Work Experience", 180, 800),
+      item("Beijing", 40, 770),
+      item("Led backend architecture redesign for core payment platform", 180, 770),
+      item("Java / Go", 40, 740),
+      item("Reduced p99 latency by 45% across 12 microservices", 180, 740),
+    ];
+    const text = joinPageItems(items);
+    expect(text).toBe(
+      [
+        "Contact",
+        "Beijing",
+        "Java / Go",
+        "",
+        "Work Experience",
+        "Led backend architecture redesign for core payment platform",
+        "Reduced p99 latency by 45% across 12 microservices",
+      ].join("\n")
+    );
+  });
+
+  it("混合版式（通栏页眉 + 双栏正文 + 通栏页脚）：完整保留三段式阅读顺序", () => {
+    const items = [
+      item("Zhang Wei - Senior Full-Stack Engineer & Architect", 50, 820),
+      item("Skills:", 50, 740),
+      item("Experience:", 280, 740),
+      item("TypeScript", 50, 710),
+      item("Acme Corp | Engineer", 280, 710),
+      item("References available upon request - Portfolio: https://example.com", 50, 100),
+    ];
+    const text = joinPageItems(items);
+    expect(text).toBe(
+      [
+        "Zhang Wei - Senior Full-Stack Engineer & Architect",
+        "",
+        "Skills:",
+        "TypeScript",
+        "",
+        "Experience:",
+        "Acme Corp | Engineer",
+        "",
+        "References available upon request - Portfolio: https://example.com",
+      ].join("\n")
+    );
+  });
+
+  it("空页与畸形文本项（如 MarkedContent）不崩溃", () => {
+    expect(joinPageItems([])).toBe("");
+    const malformed = [
+      { type: "beginMarkedContent" } as unknown as ReturnType<typeof item>,
+      item("Valid", 50, 800),
+      item("Line", 100, 800),
+    ];
+    expect(joinPageItems(malformed)).toBe("Valid Line");
+  });
+
+  it("扫描件/纯图片/无文本层 PDF 返回 scanner: true 与可操作引导，不崩溃", async () => {
+    const emptyPages = analyzePdfPages([]);
+    expect(emptyPages.ok).toBe(false);
+    expect(emptyPages.scanner).toBe(true);
+    expect(emptyPages.error).toMatch(/OCR|粘贴文本|DOCX/);
+
+    const whitespaceOnly = analyzePdfPages([[item("   ", 60, 800), item("\t", 80, 780)]]);
+    expect(whitespaceOnly.ok).toBe(false);
+    expect(whitespaceOnly.scanner).toBe(true);
+    expect(whitespaceOnly.error).toBeTruthy();
+
+    const emptyFile = new File([], "scanned.pdf", { type: "application/pdf" });
+    const fileRes = await extractFileText(emptyFile, "pdf");
+    expect(fileRes.ok).toBe(false);
+    expect(fileRes.scanner).toBe(true);
+    expect(fileRes.error).toMatch(/OCR|粘贴文本|DOCX/);
   });
 });
