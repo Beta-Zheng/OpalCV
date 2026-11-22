@@ -7,6 +7,7 @@ import { A4Sheet } from "./template";
 import { readResumeLayout } from "./resume-measure";
 import { Btn } from "./ui";
 import { flashLocation, scrollInPane, type ResumeLocation } from "../lib/preview-navigation";
+import { useT } from "../lib/i18n";
 import { stripHtml } from "../lib/utils";
 
 export default function ResumePreview({
@@ -22,6 +23,7 @@ export default function ResumePreview({
   location?: ResumeLocation | null;
   onLocate?: (sectionId: string, blockId?: string) => void;
 }) {
+  const t = useT();
   const container = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLDivElement>(null);
   const displayed = useRef<HTMLDivElement>(null);
@@ -133,25 +135,31 @@ export default function ResumePreview({
       className="relative min-w-0"
       data-testid="resume-preview"
     >
-      <div data-preview-toolbar className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-line bg-paper-50 px-3 py-2">
-        <span className="text-[11px] text-ink-500">
-          预览 · {pages.length} 页
-        </span>
-        <div className="flex flex-wrap gap-1">
-          {tools}
-          {(["fit", 0.75, 1] as const).map((value) => (
-            <Btn
-              key={value}
-              variant="ghost"
-              aria-pressed={zoom === value}
-              className={`h-7 px-2 text-[11px] ${
-                zoom === value ? "bg-paper-200 font-medium text-ink-800" : ""
-              }`}
-              onClick={() => setZoom(value)}
-            >
-              {value === "fit" ? "适应窗口" : `${value * 100}%`}
-            </Btn>
-          ))}
+      <div className="sticky top-2.5 z-10 flex justify-center px-3 py-1">
+        <div
+          data-preview-toolbar
+          className="liquid-glass relative flex flex-wrap items-center justify-between gap-2 rounded-full px-3.5 py-1.5"
+        >
+          <span className="px-1 text-[11.5px] font-medium text-ink-500">
+            {t(`${pages.length} 页`, `${pages.length} ${pages.length === 1 ? "page" : "pages"}`)}
+          </span>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1" data-preview-controls>
+            {tools}
+            {(["fit", 0.75, 1] as const).map((value) => (
+              <Btn
+                key={value}
+                variant="ghost"
+                size="sm"
+                aria-pressed={zoom === value}
+                className={`h-7 min-h-7 rounded-full px-2.5 text-[11.5px] ${value !== "fit" ? "preview-zoom-fixed" : ""} ${
+                  zoom === value ? "glass-lens font-semibold" : ""
+                }`}
+                onClick={() => setZoom(value)}
+              >
+                {value === "fit" ? t("适应窗口", "Fit") : `${value * 100}%`}
+              </Btn>
+            ))}
+          </div>
         </div>
       </div>
       {onLocate && <p role="status" className={notice.startsWith("该内容") ? "border-b border-line px-3 py-2 text-[12px] text-seal-700" : "sr-only"}>{notice}</p>}
@@ -188,20 +196,22 @@ export default function ResumePreview({
       >
         <A4Sheet resume={resume} />
       </div>
-      <div ref={displayed} className={`overflow-x-auto bg-paper-200 px-4 py-4 ${onLocate ? "interactive-preview" : ""}`}
+      <div ref={displayed} className={`preview-canvas overflow-x-auto px-4 py-5 ${onLocate ? "interactive-preview" : ""}`}
         onClick={event => locateFromPreview(event.target as Element)}
         >
         {pages.map((page, i) => (
           <div
             key={i}
             data-preview-page={i + 1}
-            className="mx-auto mb-5"
+            className="mx-auto mb-6"
             style={{ width: 794 * scale, minHeight: page.height * scale }}
           >
-            <p className="mb-1 text-[10px] text-ink-500">
-              第 {i + 1} 页{page.oversized && " · 单个条目过长，请拆分后导出"}
+            <p className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-surface/85 px-2.5 py-0.5 text-[10.5px] font-medium text-ink-500 ring-1 ring-line">
+              {t(`第 ${i + 1} 页`, `Page ${i + 1}`)}
+              {page.oversized &&
+                t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
             </p>
-            <div style={{ height: page.height * scale, position: "relative" }}>
+            <div className="rounded-[2px] shadow-xl shadow-ink-950/12 ring-1 ring-ink-900/8" style={{ height: page.height * scale, position: "relative" }}>
               <div
                 style={{
                   transform: `scale(${scale})`,

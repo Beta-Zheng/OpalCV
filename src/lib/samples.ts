@@ -23,13 +23,26 @@ const NAME_POOL = [
   { name: "许望舒", email: "xuwangshu" },
 ];
 
+const EN_NAME_POOL = [
+  { name: "Alex Chen", email: "alex.chen" },
+  { name: "Maya Patel", email: "maya.patel" },
+  { name: "Ethan Brooks", email: "ethan.brooks" },
+  { name: "Sophia Lin", email: "sophia.lin" },
+  { name: "Daniel Kim", email: "daniel.kim" },
+  { name: "Claire Bennett", email: "claire.bennett" },
+];
+
 interface Identity {
   name: string;
   email: string;
   phone: string;
 }
 
-function pickIdentity(): Identity {
+function pickIdentity(locale: "zh" | "en" = "zh"): Identity {
+  if (locale === "en") {
+    const pick = EN_NAME_POOL[Math.floor(Math.random() * EN_NAME_POOL.length)];
+    return { name: pick.name, email: pick.email, phone: "+1 (415) 555-0192" };
+  }
   const pick = NAME_POOL[Math.floor(Math.random() * NAME_POOL.length)];
   const phone = "138-XXXX-XXXX";
   return { name: pick.name, email: pick.email, phone };
@@ -65,20 +78,24 @@ const b = (
 });
 
 /** 六个固定模块按标准顺序组装（basic_info 由外层统一填充） */
-function assembleSections(parts: {
-  /** 个人总结以要点分条填充（而非 description 段落） */
-  summaryBullets: string[];
-  work: ReturnType<typeof b>[];
-  projects: ReturnType<typeof b>[];
-  education: { school: string; major: string; start: string; end: string };
-  skills: { group: string; items: string[] }[];
-  certs: { title: string; year: string }[];
-}): Section[] {
+function assembleSections(
+  parts: {
+    /** 个人总结以要点分条填充（而非 description 段落） */
+    summaryBullets: string[];
+    work: ReturnType<typeof b>[];
+    projects: ReturnType<typeof b>[];
+    education: { school: string; major: string; start: string; end: string };
+    skills: { group: string; items: string[] }[];
+    certs: { title: string; year: string }[];
+  },
+  locale: "zh" | "en" = "zh"
+): Section[] {
+  const isEn = locale === "en";
   return [
     {
       section_id: "basic_info",
       type: "basic_info",
-      title: "基本信息",
+      title: isEn ? "Basic Info" : "基本信息",
       visible: true,
       order: 0,
       blocks: [],
@@ -86,7 +103,7 @@ function assembleSections(parts: {
     {
       section_id: "summary",
       type: "summary",
-      title: "个人总结",
+      title: isEn ? "Summary" : "个人总结",
       visible: true,
       order: 1,
       blocks: [{ ...blk("summary"), bullets: parts.summaryBullets }],
@@ -94,7 +111,7 @@ function assembleSections(parts: {
     {
       section_id: "work_experience",
       type: "work_experience",
-      title: "工作经历",
+      title: isEn ? "Experience" : "工作经历",
       visible: true,
       order: 2,
       blocks: parts.work,
@@ -102,7 +119,7 @@ function assembleSections(parts: {
     {
       section_id: "project_experience",
       type: "project_experience",
-      title: "项目经历",
+      title: isEn ? "Projects" : "项目经历",
       visible: true,
       order: 3,
       blocks: parts.projects,
@@ -110,7 +127,7 @@ function assembleSections(parts: {
     {
       section_id: "education",
       type: "education",
-      title: "教育经历",
+      title: isEn ? "Education" : "教育经历",
       visible: true,
       order: 4,
       blocks: [
@@ -126,7 +143,7 @@ function assembleSections(parts: {
     {
       section_id: "skills",
       type: "skills",
-      title: "技能",
+      title: isEn ? "Skills" : "技能",
       visible: true,
       order: 5,
       blocks: parts.skills.map((s) => ({
@@ -138,7 +155,7 @@ function assembleSections(parts: {
     {
       section_id: "certifications",
       type: "certifications",
-      title: "证书奖项",
+      title: isEn ? "Awards & Publications" : "证书奖项",
       visible: true,
       order: 6,
       blocks: parts.certs.map((c) =>
@@ -461,21 +478,435 @@ function profileData(
   };
 }
 
-/* ---------------- 随机组装入口 ---------------- */
+/* ---------------- Profile 4 (EN): Staff ML Engineer · Google ---------------- */
 
-const PROFILES = [profileAI, profileFrontend, profileData];
+function profileEnGoogleML(
+  _: Identity
+): Pick<ResumeData, "sections"> & { roleTitle: string; location: string } {
+  return {
+    roleTitle: "Staff Machine Learning Engineer · LLM & Post-Training",
+    location: "Mountain View, CA",
+    sections: assembleSections(
+      {
+        summaryBullets: [
+          "8+ years building large-scale foundation models, post-training alignment (RLHF/DPO), and low-latency inference systems at Google and Meta AI",
+          "Led multi-step reasoning and tool-use post-training for production LLMs serving 50M+ daily queries, improving SWE-bench & coding pass@1 by +14.2%",
+          "Architected speculative decoding and KV-cache quantization on TPU v5p / H100 clusters, cutting P95 time-to-first-token by 41% and serving cost by 34%",
+          "Published co-author at NeurIPS & ICLR; technical lead mentoring 6 ML engineers across training data, reward modeling, and evaluation harnesses",
+        ],
+        work: [
+          b({
+            type: "work_experience_item",
+            title: "Google",
+            subtitle: "Staff Machine Learning Engineer · Gemini Post-Training",
+            start_date: "2022-04",
+            end_date: "Present",
+            location: "Mountain View, CA",
+            bullets: [
+              "Architected end-to-end RLHF and verifier-guided GRPO post-training pipelines in JAX across 2,048 TPU v5p chips, boosting complex reasoning and tool-calling accuracy by 14.2% on internal eval suites",
+              "Designed synthetic trajectory generation and automated rubric filtering (1.8M multi-turn traces), reducing human preference labeling cost by 48% while raising win-rate vs. baseline by +9.6%",
+              "Partnered with Serving Infra to ship draft-model speculative decoding and FP8 KV-cache compression, lowering P95 TTFT from 780ms to 460ms at peak traffic",
+              "Led cross-functional launch reviews for 3 flagship model checkpoints; established reproducible safety & regression benchmarks adopted by 40+ researchers",
+            ],
+          }),
+          b({
+            type: "work_experience_item",
+            title: "Meta AI",
+            subtitle: "Senior Machine Learning Engineer · Foundation Models",
+            start_date: "2019-07",
+            end_date: "2022-03",
+            location: "Menlo Park, CA",
+            bullets: [
+              "Built FSDP distributed pre-training and continual-training workflows in PyTorch for 30B+ parameter multilingual transformers with 93% cluster MFU",
+              "Engineered automated data deduplication and quality-scoring pipeline over 12T tokens, improving zero-shot benchmark perplexity by 6.4%",
+              "Delivered real-time embedding retrieval models powering semantic ranking for 2B+ active users with 99.98% serving SLA",
+            ],
+          }),
+        ],
+        projects: [
+          b({
+            type: "project_experience_item",
+            title: "Verifiable Code & Tool-Use RL Harness",
+            subtitle: "Tech Lead",
+            start_date: "2023-09",
+            end_date: "Present",
+            bullets: [
+              "Built sandboxed execution verifier executing 100K+ concurrent unit-test rollouts per hour to supply dense reward signals without reward hacking",
+              "Reduced policy collapse incidents to zero via KL-adaptive curriculum scheduling and automated checkpoint rollback",
+            ],
+            skills: ["JAX", "RLHF / GRPO", "TPU v5p", "Python", "Kubernetes"],
+          }),
+          b({
+            type: "project_experience_item",
+            title: "Speculative Decoding Kernel & Serving Profiler",
+            subtitle: "Core Contributor",
+            start_date: "2022-11",
+            end_date: "2023-08",
+            bullets: [
+              "Implemented tree-attention verification kernels in Triton/XLA, achieving 2.3x decode throughput speedup on long-context prompts (32K+ tokens)",
+              "Authored latency attribution profiler adopted across 4 serving teams to diagnose prefill vs. decode bottlenecks",
+            ],
+            skills: ["Triton", "CUDA", "XLA", "vLLM", "C++"],
+          }),
+        ],
+        education: {
+          school: "Stanford University",
+          major: "M.S. in Computer Science (Artificial Intelligence Track)",
+          start: "2017-09",
+          end: "2019-06",
+        },
+        skills: [
+          {
+            group: "AI & Modeling",
+            items: [
+              "LLM Post-Training",
+              "RLHF / DPO / GRPO",
+              "Speculative Decoding",
+              "Distributed Training (FSDP)",
+              "Eval Harnesses",
+            ],
+          },
+          {
+            group: "Systems & Languages",
+            items: [
+              "Python",
+              "C++",
+              "JAX",
+              "PyTorch",
+              "CUDA / Triton",
+              "vLLM",
+              "TensorRT-LLM",
+              "Kubernetes",
+            ],
+          },
+        ],
+        certs: [
+          { title: "NeurIPS Spotlight Co-Author · Verifiable Reasoning in LLMs", year: "2024" },
+          { title: "Google Engineering Excellence Award", year: "2023" },
+        ],
+      },
+      "en"
+    ),
+  };
+}
 
-/** 每次调用：随机身份 × 随机档案 → 一份完整示例简历 */
-export type SampleKind = "ai" | "frontend" | "data";
+/* ---------------- Profile 5 (EN): Senior On-Device AI Engineer · Apple ---------------- */
+
+function profileEnAppleAI(
+  _: Identity
+): Pick<ResumeData, "sections"> & { roleTitle: string; location: string } {
+  return {
+    roleTitle: "Senior Machine Learning Engineer · On-Device AI & Multimodal",
+    location: "Cupertino, CA",
+    sections: assembleSections(
+      {
+        summaryBullets: [
+          "7 years specializing in on-device multimodal foundation models, model compression, and Neural Engine / GPU inference at Apple and NVIDIA",
+          "Shipped INT4/2-bit palettized sub-3B vision-language models running locally on Apple Silicon with <1.1GB peak RAM and 45+ tok/s throughput",
+          "Designed hot-swappable LoRA adapter architecture enabling 8+ system intelligence tasks on a single shared on-device base model",
+          "Deep full-stack fluency from PyTorch quantization-aware training down to Core ML, MLX, Metal shaders, and C++/Swift runtime integration",
+        ],
+        work: [
+          b({
+            type: "work_experience_item",
+            title: "Apple",
+            subtitle: "Senior Machine Learning Engineer · Apple Intelligence & Core ML",
+            start_date: "2022-02",
+            end_date: "Present",
+            location: "Cupertino, CA",
+            bullets: [
+              "Led mixed-bitweight palettization (2-bit/4-bit) and activation-aware quantization for a 3B on-device foundation model, cutting memory footprint by 68% with <0.6% quality drop on human evals",
+              "Built dynamic LoRA adapter loading runtime in Core ML & C++, enabling sub-25ms task switching across Writing Tools, Summarization, and Visual Intelligence",
+              "Optimized vision encoder + token-merging layers for Apple Neural Engine (ANE), reducing first-token latency on 1080p screenshots from 620ms to 210ms",
+              "Collaborated with Privacy & OS teams to enforce zero-data-exfiltration on-device execution and strict thermal/battery budgets across iOS and macOS",
+            ],
+          }),
+          b({
+            type: "work_experience_item",
+            title: "NVIDIA",
+            subtitle: "Deep Learning Inference Engineer · TensorRT",
+            start_date: "2019-06",
+            end_date: "2022-01",
+            location: "Santa Clara, CA",
+            bullets: [
+              "Developed fused INT8/FP16 multi-head attention plugins in CUDA/C++ for TensorRT, accelerating transformer inference by 1.9x on A100 and Jetson Orin",
+              "Built automated graph-fusion and precision-calibration tooling adopted by 150+ enterprise CV/NLP customers",
+              "Reduced model engine build time by 45% through parallelized tactic profiling and kernel caching",
+            ],
+          }),
+        ],
+        projects: [
+          b({
+            type: "project_experience_item",
+            title: "Sub-3B On-Device Multimodal VLM Compression",
+            subtitle: "Lead Engineer",
+            start_date: "2023-05",
+            end_date: "Present",
+            bullets: [
+              "Combined QAT (Quantization-Aware Training) with adaptive token pruning to fit high-res OCR + reasoning inside a 1.1GB mobile RAM ceiling",
+              "Built automated on-device benchmark rig measuring tok/s, thermal throttling, and energy-per-token across 6 Apple Silicon chipsets",
+            ],
+            skills: ["Core ML", "MLX", "PyTorch", "QAT / INT4", "Swift", "Metal"],
+          }),
+          b({
+            type: "project_experience_item",
+            title: "Real-Time Neural Engine LoRA Adapter Switcher",
+            subtitle: "Architect",
+            start_date: "2022-07",
+            end_date: "2023-04",
+            bullets: [
+              "Eliminated duplicate base-weight residency by memory-mapping shared weights and streaming lightweight rank-16 adapters on demand",
+              "Saved 4.2GB of flash storage per device while maintaining deterministic <25ms cold-swap latency",
+            ],
+            skills: ["C++", "Core ML", "LoRA", "iOS / macOS", "ANE"],
+          }),
+        ],
+        education: {
+          school: "Carnegie Mellon University",
+          major: "M.S. in Machine Learning",
+          start: "2017-09",
+          end: "2019-05",
+        },
+        skills: [
+          {
+            group: "On-Device AI & Compression",
+            items: [
+              "Quantization (INT4 / QAT / AWQ)",
+              "Core ML",
+              "MLX",
+              "Multimodal VLMs",
+              "LoRA Adapters",
+              "TensorRT",
+            ],
+          },
+          {
+            group: "Languages & Runtimes",
+            items: [
+              "Python",
+              "C++",
+              "Swift",
+              "PyTorch",
+              "Metal",
+              "CUDA",
+              "ONNX",
+            ],
+          },
+        ],
+        certs: [
+          { title: "Apple AIML Patent Co-Inventor (2 Pending Filings on On-Device Adapters)", year: "2024" },
+          { title: "ICML On-Device Intelligence Workshop · Best Paper", year: "2023" },
+        ],
+      },
+      "en"
+    ),
+  };
+}
+
+/* ---------------- Profile 6 (EN): Principal Applied AI Engineer · Microsoft ---------------- */
+
+function profileEnMsftAgent(
+  _: Identity
+): Pick<ResumeData, "sections"> & { roleTitle: string; location: string } {
+  return {
+    roleTitle: "Principal Applied AI Engineer · Copilot & Agent Platform",
+    location: "Redmond, WA",
+    sections: assembleSections(
+      {
+        summaryBullets: [
+          "8 years architecting enterprise AI agents, GraphRAG knowledge platforms, and production Copilot experiences at Microsoft and AWS",
+          "Led multi-agent orchestration for Microsoft 365 Copilot workflows serving 10M+ enterprise seats, lifting task completion rate from 64% to 88%",
+          "Built hybrid GraphRAG + permission-aware grounding engine over SharePoint/Teams corpora, cutting unsupported claims by 72%",
+          "End-to-end owner across model routing, MCP tool ecosystems, online A/B experimentation, and responsible AI guardrails",
+        ],
+        work: [
+          b({
+            type: "work_experience_item",
+            title: "Microsoft",
+            subtitle: "Principal Applied AI Engineer · Microsoft 365 Copilot",
+            start_date: "2021-08",
+            end_date: "Present",
+            location: "Redmond, WA",
+            bullets: [
+              "Architected planner-executor multi-agent runtime supporting 120+ enterprise connectors (MCP / Graph API), increasing end-to-end multi-step task completion from 64% to 88%",
+              "Designed ACL-aware hybrid retrieval (dense vectors + BM25 + semantic reranking + GraphRAG), reducing hallucination rate by 72% across 500M+ indexed enterprise documents",
+              "Implemented tiered model routing (small fast classifier + frontier reasoning fallback), lowering average inference cost per Copilot session by 39% while holding P95 latency under 1.8s",
+              "Established continuous offline + shadow-traffic LLM evaluation pipelines covering groundedness, prompt-injection resilience, and citation precision across 6 product teams",
+            ],
+          }),
+          b({
+            type: "work_experience_item",
+            title: "Amazon Web Services (AWS)",
+            subtitle: "Applied Scientist · Bedrock & Enterprise Search",
+            start_date: "2018-07",
+            end_date: "2021-07",
+            location: "Seattle, WA",
+            bullets: [
+              "Developed neural dense-retrieval and cross-encoder reranking models for AWS Kendra, improving NDCG@10 by +11.4% across 18 enterprise domains",
+              "Built automated domain-adaptation fine-tuning workflows enabling customers to onboard custom glossaries in under 2 hours",
+              "Authored latency & throughput load-testing suite supporting 50K+ QPS multi-tenant serving deployments",
+            ],
+          }),
+        ],
+        projects: [
+          b({
+            type: "project_experience_item",
+            title: "Enterprise Multi-Agent Grounding & MCP Orchestrator",
+            subtitle: "Architect & Tech Lead",
+            start_date: "2023-03",
+            end_date: "Present",
+            bullets: [
+              "Built deterministic state-machine guardrails with human-in-the-loop approval checkpoints for write actions (email, calendar, CRM updates)",
+              "Enabled structured citation verification linking every generated claim back to tenant-authorized source spans with 94% precision",
+            ],
+            skills: ["AI Agents", "MCP", "GraphRAG", "Azure OpenAI", "TypeScript", "Python"],
+          }),
+          b({
+            type: "project_experience_item",
+            title: "Automated Safety & Hallucination Eval Platform",
+            subtitle: "Creator",
+            start_date: "2022-01",
+            end_date: "2023-02",
+            bullets: [
+              "Created red-teaming and groundedness judge pipeline executing 50K adversarial + regression prompts nightly prior to prompt/model rollouts",
+              "Prevented 19 high-severity regression releases and cut eval turnaround time from 3 days to 22 minutes",
+            ],
+            skills: ["LLM Evals", "Prompt Engineering", "C#", "Python", "Distributed Systems"],
+          }),
+        ],
+        education: {
+          school: "University of Washington",
+          major: "B.S. in Computer Science & Engineering",
+          start: "2014-09",
+          end: "2018-06",
+        },
+        skills: [
+          {
+            group: "Applied AI & Agents",
+            items: [
+              "Multi-Agent Systems",
+              "GraphRAG / Hybrid Search",
+              "Model Routing",
+              "MCP & Tool Use",
+              "LLM Evaluation",
+              "AI Safety Guardrails",
+            ],
+          },
+          {
+            group: "Engineering & Cloud",
+            items: [
+              "TypeScript",
+              "Python",
+              "C#",
+              "Azure OpenAI",
+              "AWS",
+              "Distributed Systems",
+              "Kubernetes",
+            ],
+          },
+        ],
+        certs: [
+          { title: "Microsoft Global Hackathon · Grand Prize Winner (Agentic Workflows)", year: "2024" },
+          { title: "ACL Industry Track Co-Author · Permission-Aware Enterprise RAG", year: "2023" },
+        ],
+      },
+      "en"
+    ),
+  };
+}
+
+/* ---------------- 示例目录与随机组装入口 ---------------- */
+
+export type SampleKind =
+  | "ai"
+  | "frontend"
+  | "data"
+  | "en_google_ml"
+  | "en_apple_ai"
+  | "en_msft_agent";
+
+export interface SampleCatalogItem {
+  id: SampleKind;
+  locale: "zh" | "en";
+  titleZh: string;
+  titleEn: string;
+  companies: string[];
+}
+
+export const SAMPLE_CATALOG: readonly SampleCatalogItem[] = [
+  {
+    id: "ai",
+    locale: "zh",
+    titleZh: "AI 应用工程师 · 大模型方向",
+    titleEn: "AI Application Engineer (ZH)",
+    companies: ["云阙智能", "深流科技"],
+  },
+  {
+    id: "frontend",
+    locale: "zh",
+    titleZh: "高级前端工程师",
+    titleEn: "Senior Frontend Engineer (ZH)",
+    companies: ["星澜互动", "青柠网络"],
+  },
+  {
+    id: "data",
+    locale: "zh",
+    titleZh: "数据分析师 · 增长方向",
+    titleEn: "Growth Data Analyst (ZH)",
+    companies: ["澜舟零售", "临江信息"],
+  },
+  {
+    id: "en_google_ml",
+    locale: "en",
+    titleZh: "Staff ML Engineer · LLM 后训练（英文）",
+    titleEn: "Staff ML Engineer · LLM & Post-Training",
+    companies: ["Google", "Meta AI"],
+  },
+  {
+    id: "en_apple_ai",
+    locale: "en",
+    titleZh: "Senior On-Device AI Engineer · 端侧多模态（英文）",
+    titleEn: "Senior On-Device AI & Multimodal Engineer",
+    companies: ["Apple", "NVIDIA"],
+  },
+  {
+    id: "en_msft_agent",
+    locale: "en",
+    titleZh: "Principal Applied AI Engineer · Copilot & Agents（英文）",
+    titleEn: "Principal Applied AI Engineer · Copilot & Agents",
+    companies: ["Microsoft", "AWS"],
+  },
+] as const;
+
+const PROFILE_MAP: Record<
+  SampleKind,
+  {
+    locale: "zh" | "en";
+    factory: (
+      who: Identity
+    ) => Pick<ResumeData, "sections"> & { roleTitle: string; location: string };
+  }
+> = {
+  ai: { locale: "zh", factory: profileAI },
+  frontend: { locale: "zh", factory: profileFrontend },
+  data: { locale: "zh", factory: profileData },
+  en_google_ml: { locale: "en", factory: profileEnGoogleML },
+  en_apple_ai: { locale: "en", factory: profileEnAppleAI },
+  en_msft_agent: { locale: "en", factory: profileEnMsftAgent },
+};
+
+const ZH_PROFILES: SampleKind[] = ["ai", "frontend", "data"];
+
+/** 每次调用：随机身份 × 指定/随机档案 → 一份完整示例简历 */
 export function buildSampleResume(
   kind?: SampleKind,
   audience: ResumeAudience = "experienced"
 ): ResumeData {
-  const who = pickIdentity();
-  const factory = kind
-    ? { ai: profileAI, frontend: profileFrontend, data: profileData }[kind]
-    : PROFILES[Math.floor(Math.random() * PROFILES.length)];
-  const profile = factory(who);
+  const chosenKind =
+    kind ?? ZH_PROFILES[Math.floor(Math.random() * ZH_PROFILES.length)];
+  const entry = PROFILE_MAP[chosenKind];
+  const isEn = entry.locale === "en";
+  const who = pickIdentity(entry.locale);
+  const profile = entry.factory(who);
   if (audience === "student" || audience === "internship") {
     profile.sections = profile.sections.filter(
       (s) => s.type !== "work_experience" && s.type !== "certifications"
@@ -484,33 +915,58 @@ export function buildSampleResume(
     if (summary)
       summary.blocks.forEach((b) => {
         b.title = "";
-        b.description =
-          audience === "internship"
+        b.description = isEn
+          ? audience === "internship"
+            ? "CS/AI student seeking an AI/ML engineering internship. Sample academic projects below are placeholders—replace with your real coursework and research."
+            : "New grad in Computer Science / Machine Learning seeking full-time AI engineering roles. Replace these sample projects with your own experience."
+          : audience === "internship"
             ? "在校生，正在寻找实习机会。以下课程项目为虚构示例，请替换为自己的真实经历。"
             : "应届毕业生，通过课程与项目实践积累岗位相关能力。以下内容为虚构示例，请替换为自己的真实经历。";
         b.bullets = [];
       });
-    profile.roleTitle =
-      profile.roleTitle.replace(/高级|资深/g, "").replace(/ ·.*$/, "") +
-      (audience === "internship" ? "实习生" : "");
+    profile.roleTitle = isEn
+      ? profile.roleTitle
+          .replace(/\b(Staff|Senior|Principal)\s+/gi, "")
+          .replace(/\s*·.*$/, "") +
+        (audience === "internship" ? " Intern" : "")
+      : profile.roleTitle.replace(/高级|资深/g, "").replace(/ ·.*$/, "") +
+        (audience === "internship" ? "实习生" : "");
     const projects = profile.sections.find(
       (s) => s.type === "project_experience"
     );
     projects?.blocks.forEach((block, index) => {
-      block.title = `课程实践：${block.title}`;
-      block.subtitle = "项目成员";
-      block.start_date = index === 0 ? "2025-09" : "2025-03";
-      block.end_date = index === 0 ? "2025-12" : "2025-06";
-      block.description = "";
-      block.bullets = [
-        "参与需求拆解与原型实现，完成分配的功能模块。",
-        "整理测试用例并修复问题，记录实践过程与学习成果。",
-      ];
+      if (isEn) {
+        block.title = `Course Project: ${block.title}`;
+        block.subtitle = "Project Contributor";
+        block.start_date = index === 0 ? "2025-09" : "2025-03";
+        block.end_date = index === 0 ? "2025-12" : "2025-06";
+        block.description = "";
+        block.bullets = [
+          "Implemented core model training/evaluation modules and documented reproducible experiment benchmarks.",
+          "Collaborated with teammates on ablations, unit tests, and final technical presentation.",
+        ];
+      } else {
+        block.title = `课程实践：${block.title}`;
+        block.subtitle = "项目成员";
+        block.start_date = index === 0 ? "2025-09" : "2025-03";
+        block.end_date = index === 0 ? "2025-12" : "2025-06";
+        block.description = "";
+        block.bullets = [
+          "参与需求拆解与原型实现，完成分配的功能模块。",
+          "整理测试用例并修复问题，记录实践过程与学习成果。",
+        ];
+      }
     });
     const education = profile.sections.find((s) => s.type === "education");
     education?.blocks.forEach((block) => {
       block.start_date = "2023-09";
-      block.end_date = audience === "internship" ? "至今" : "2027-06（预计）";
+      block.end_date = isEn
+        ? audience === "internship"
+          ? "Present"
+          : "2027-06 (Expected)"
+        : audience === "internship"
+          ? "至今"
+          : "2027-06（预计）";
     });
     profile.sections.forEach((section, index) => {
       section.order = index;
@@ -523,7 +979,9 @@ export function buildSampleResume(
       email: `${who.email}@example.com`,
       phone: who.phone,
       location: profile.location,
-      website: `${who.email}.example.com`,
+      website: isEn
+        ? `github.com/${who.email.replace(/\./g, "")}`
+        : `${who.email}.example.com`,
     },
     sections: profile.sections,
     metadata: { source: "sample", created_at: nowISO() },

@@ -1186,6 +1186,67 @@ export async function generatePdf(
   return buildVectorPdf(pageResumes);
 }
 
+export function resumeMarkdown(resume: Resume): string {
+  const localized = localizedResume(resume);
+  const info = localized.data.basic_info;
+  const sep = localized.locale === "en" ? ": " : "：";
+  const lines: string[] = [];
+  if (info.name) lines.push(`# ${plainText(info.name)}`);
+  if (info.title) lines.push(`**${plainText(info.title)}**`);
+  const contacts = [
+    info.email,
+    info.phone,
+    info.location,
+    info.website,
+    ...(info.custom_fields ?? [])
+      .map((f) => [f.label?.trim(), f.value?.trim()].filter(Boolean).join(sep))
+      .filter(Boolean),
+  ].filter(Boolean);
+  if (contacts.length) lines.push(contacts.join(" | "));
+  lines.push("");
+
+  const sections = [...localized.data.sections]
+    .filter((s) => s.visible && s.type !== "basic_info")
+    .sort((a, b) => a.order - b.order);
+
+  for (const s of sections) {
+    const blocks = [...s.blocks]
+      .filter((b) => b.visible && blockHasContent(b))
+      .sort((a, b) => a.order - b.order);
+    if (!blocks.length) continue;
+    lines.push(`## ${plainText(s.title)}`);
+    lines.push("");
+    for (const b of blocks) {
+      const heading = [
+        plainText(b.title),
+        ...[b.subtitle, ...(b.subtitles ?? [])].map(plainText).filter(Boolean),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const dates = [b.start_date, b.end_date].filter(Boolean).join(" – ");
+      const meta = [dates, plainText(b.location)].filter(Boolean).join(" · ");
+      if (heading || meta) {
+        lines.push(
+          heading && meta ? `### ${heading} (${meta})` : `### ${heading || meta}`
+        );
+      }
+      if (b.description) lines.push(plainText(b.description));
+      if (b.skills.length) {
+        lines.push(`- ${b.skills.map(plainText).join(" · ")}`);
+      }
+      for (const bullet of b.bullets) {
+        const clean = plainText(bullet).trim();
+        if (clean) lines.push(`- ${clean}`);
+      }
+      if (b.links.length) {
+        lines.push(b.links.filter(Boolean).join(" · "));
+      }
+      lines.push("");
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+
 export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

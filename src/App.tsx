@@ -4,30 +4,30 @@ import {
   Suspense,
   useEffect,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
-import { motion } from "framer-motion";
+import { flushSync } from "react-dom";
+import { MotionConfig, motion, useReducedMotion } from "framer-motion";
+import { enterTransition } from "./components/motion-layer";
 import { cx } from "./lib/utils";
 import { useApp, type View } from "./lib/store";
 import { ToastHost } from "./components/ui";
-import CommandPalette, {
-  openCommandPalette,
-} from "./components/command-palette";
+import CommandPalette from "./components/command-palette";
 import Logo from "./components/logo";
+import MobileOrbNav, { type OrbNavAction } from "./components/mobile-orb-nav";
 import Home from "./pages/Home";
 import UsageGuide from "./components/usage-guide";
-import { openUsageGuide } from "./lib/onboarding";
 import { hashView } from "./lib/navigation";
+import { toggleUiLang, UI_COPY, useUiLang } from "./lib/i18n";
 import {
   IconAlert,
-  IconDashboard,
-  IconSend,
-  IconCpu,
-  IconDatabase,
-  IconMenu,
-  IconSearch,
-  IconShield,
-  IconBookOpen,
+  IconNavWorkspace,
+  IconNavApplications,
+  IconNavModels,
+  IconNavSettings,
+  IconSun,
+  IconMoon,
 } from "./components/icons";
 
 const Editor = lazy(() => import("./pages/Editor"));
@@ -51,33 +51,26 @@ class ErrorBoundary extends Component<
           className="flex h-screen items-center justify-center bg-page p-6"
           style={{ fontFamily: '"Noto Sans SC", "PingFang SC", sans-serif' }}
         >
-          <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl shadow-ink-900/10">
+          <div className="soft-panel w-full max-w-md rounded-3xl p-6">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger-100 text-danger-700">
                 <IconAlert size={18} />
               </span>
               <div>
-                <h1
-                  className="text-[16px] font-bold"
-                  style={{ color: "#1B1C1F" }}
-                >
+                <h1 className="text-[16px] font-bold text-ink-900">
                   页面渲染出错了
                 </h1>
-                <p className="text-[12px]" style={{ color: "#6E7076" }}>
-                  应用遇到了意外错误，你的本地数据不会丢失
+                <p className="text-[12px] text-ink-500">
+                  你的本地数据安全无虞，重新加载即可恢复
                 </p>
               </div>
             </div>
-            <pre
-              className="mt-4 max-h-32 overflow-auto rounded-lg p-3 font-mono text-[12px] leading-relaxed"
-              style={{ background: "#F4F4F0", color: "#B91C1C" }}
-            >
+            <pre className="mt-4 max-h-32 overflow-auto rounded-xl bg-subtle p-3 font-mono text-[12px] leading-relaxed text-danger-700">
               {this.state.error.message || String(this.state.error)}
             </pre>
             <button
               onClick={() => window.location.reload()}
-              className="mt-4 w-full rounded-md px-3 py-2 text-[13px] font-medium text-white transition active:scale-[0.98]"
-              style={{ background: "#4338CA" }}
+              className="cta-ai mt-4 w-full rounded-full px-4 py-2.5 text-[13px] font-semibold text-white"
             >
               重新加载应用
             </button>
@@ -89,43 +82,30 @@ class ErrorBoundary extends Component<
   }
 }
 
-function NavItem({
+/** 桌面端悬浮液态玻璃胶囊内的纯图标按钮（无常驻文字，悬停弹出液态玻璃气泡） */
+function DockButton({
   active,
   onClick,
   icon,
   label,
-  trailing,
 }: {
-  active: boolean;
+  active?: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
-  trailing?: ReactNode;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={cx(
-        "group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-[14px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
-        active
-          ? "bg-brand-50 text-brand-700"
-          : "text-ink-500 hover:bg-subtle hover:text-ink-900"
-      )}
+      aria-label={label}
+      className="dock-icon"
     >
-      {active && (
-        <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-brand-500" />
-      )}
-      <span
-        className={cx(
-          "flex h-5 w-5 shrink-0 items-center justify-center transition-colors",
-          active ? "text-brand-600" : "text-ink-400 group-hover:text-brand-600"
-        )}
-      >
-        {icon}
+      {icon}
+      <span className="dock-tip glass-tip" aria-hidden="true">
+        {label}
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {trailing}
     </button>
   );
 }
@@ -133,12 +113,31 @@ function NavItem({
 export default function App() {
   return (
     <ErrorBoundary>
-      <AppShell />
+      <MotionConfig reducedMotion="user" transition={enterTransition}>
+        <AppShell />
+      </MotionConfig>
     </ErrorBoundary>
   );
 }
 
 function AppShell() {
+  const reducedMotion = useReducedMotion();
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem("touchstone-theme") === "dark";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+    try {
+      localStorage.setItem("touchstone-theme", darkMode ? "dark" : "light");
+    } catch {
+      /* Theme works for this session. */
+    }
+  }, [darkMode]);
+
   const [hydrated, setHydrated] = useState(useApp.persist.hasHydrated());
   useEffect(() => {
     const unsubscribe = useApp.persist.onFinishHydration(() =>
@@ -147,6 +146,7 @@ function AppShell() {
     setHydrated(useApp.persist.hasHydrated());
     return unsubscribe;
   }, []);
+
   useEffect(() => {
     if (!hydrated) return;
     const sync = () => {
@@ -165,188 +165,248 @@ function AppShell() {
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, [hydrated]);
+
   const view = useApp((s) => s.view);
   const go = useApp((s) => s.go);
-  const privacy = useApp((s) => s.privacy);
-  const resumeCount = useApp((s) => s.resumes.length);
-  // 移动端抽屉导航（<md）：桌面侧栏 fixed 化后滑入滑出
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const uiLang = useUiLang();
+  const copy = UI_COPY[uiLang];
 
   const nav: Array<{
     key: View["name"];
     label: string;
-    icon: React.ReactNode;
+    icon: ReactNode;
     view: View;
   }> = [
     {
       key: "home",
-      label: "工作台",
-      icon: <IconDashboard size={20} />,
+      label: copy.navHome,
+      icon: <IconNavWorkspace size={20} />,
       view: { name: "home" },
     },
     {
+      key: "applications",
+      label: copy.navApplications,
+      icon: <IconNavApplications size={19} />,
+      view: { name: "applications" },
+    },
+    {
       key: "models",
-      label: "模型与隐私",
-      icon: <IconCpu size={20} />,
+      label: copy.navModels,
+      icon: <IconNavModels size={20} />,
       view: { name: "models" },
     },
     {
       key: "settings",
-      label: "数据管理",
-      icon: <IconDatabase size={20} />,
+      label: copy.navSettings,
+      icon: <IconNavSettings size={20} />,
       view: { name: "settings" },
-    },
-    {
-      key: "applications",
-      label: "投递记录",
-      icon: <IconSend size={20} />,
-      view: { name: "applications" },
     },
   ];
   const activeKey = view.name === "editor" ? "home" : view.name;
 
+  const handleToggleDarkMode = (e?: MouseEvent<HTMLButtonElement>) => {
+    const next = !darkMode;
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => {
+        ready: Promise<void>;
+        finished: Promise<void>;
+      };
+    };
+
+    if (!doc.startViewTransition || reduced) {
+      setDarkMode(next);
+      return;
+    }
+
+    const rect = e?.currentTarget?.getBoundingClientRect();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth - 32;
+    const y = rect ? rect.top + rect.height / 2 : 28;
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+
+    const isShrinking = !next; // 深色 → 浅色：暗色圆弧向按钮收缩；浅色 → 深色：暗色圆弧从按钮扩散
+    if (isShrinking) {
+      document.documentElement.dataset.themeTransition = "shrink";
+    } else {
+      delete document.documentElement.dataset.themeTransition;
+    }
+
+    const transition = doc.startViewTransition(() => {
+      flushSync(() => {
+        document.documentElement.dataset.theme = next ? "dark" : "light";
+        setDarkMode(next);
+      });
+    });
+
+    transition.ready
+      .then(() => {
+        const clipPath = isShrinking
+          ? [
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+              `circle(0px at ${x}px ${y}px)`,
+            ]
+          : [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+            ];
+        document.documentElement.animate(
+          { clipPath },
+          {
+            duration: 820,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            fill: "forwards",
+            pseudoElement: isShrinking
+              ? "::view-transition-old(root)"
+              : "::view-transition-new(root)",
+          }
+        );
+      })
+      .catch(() => {
+        // Ignore cancelled transitions on rapid toggles.
+      });
+
+    transition.finished
+      ?.finally(() => {
+        delete document.documentElement.dataset.themeTransition;
+      })
+      .catch(() => {
+        delete document.documentElement.dataset.themeTransition;
+      });
+  };
+
+  const mobileOrbActions: OrbNavAction[] = nav.map((n) => ({
+    key: n.key,
+    label: n.label,
+    icon: n.icon,
+    active: activeKey === n.key,
+    onClick: () => go(n.view),
+  }));
+
   if (!hydrated)
     return (
-      <p role="status" className="p-6">
+      <p role="status" className="p-6 text-ink-500">
         正在读取本机简历与版本…
       </p>
     );
-  return (
-    <div id="app-root" className="flex h-screen overflow-hidden bg-page">
-      {/* 移动端顶栏（<md）：汉堡按钮 + 品牌 */}
-      <div className="fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-2.5 border-b border-line bg-surface/95 px-3 py-2 backdrop-blur md:hidden">
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="tool-btn"
-          aria-label="打开导航菜单"
-          aria-expanded={drawerOpen}
-        >
-          <IconMenu size={18} />
-        </button>
-        <Logo size={28} />
-        <span className="text-[16px] font-semibold leading-none text-ink-900">
-          TouchstoneCV
-        </span>
-      </div>
-      {/* 抽屉遮罩 */}
-      {drawerOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-ink-950/45 md:hidden"
-          onClick={() => setDrawerOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-      {/* 侧边导航（v1.4 浅色化；<md 转为固定抽屉，滑入滑出） */}
-      <nav
-        className={cx(
-          "flex w-[232px] shrink-0 flex-col overflow-y-auto border-r border-line bg-surface",
-          "fixed inset-y-0 left-0 z-50 transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-none",
-          drawerOpen
-            ? "translate-x-0 shadow-2xl shadow-ink-950/25"
-            : "-translate-x-full"
-        )}
+
+  const globalControls = (
+    <div
+      role="toolbar"
+      aria-label={uiLang === "en" ? "Global controls" : "全局切换"}
+      className="flex items-center gap-2"
+    >
+      <button
+        type="button"
+        onClick={() => toggleUiLang()}
+        aria-label={copy.langTip}
+        className="liquid-glass-rail top-util-btn h-9 w-9 text-[12px] font-semibold tracking-tight hover:scale-105"
       >
-        <div className="flex shrink-0 items-center gap-3 px-5 py-6">
-          <Logo size={38} />
-          <div>
-            <p className="text-[16px] font-bold leading-5 tracking-tight text-ink-900">
-              TouchstoneCV
-            </p>
-            <p className="mt-0.5 text-[12px] leading-4 text-ink-400">
-              简历工作台
-            </p>
-          </div>
-        </div>
+        <span>{uiLang === "zh" ? "中" : "EN"}</span>
+        <span className="top-util-tip glass-tip" aria-hidden="true">
+          {copy.langTip}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={handleToggleDarkMode}
+        aria-label={darkMode ? copy.themeToLight : copy.themeToDark}
+        className="liquid-glass-rail top-util-btn h-9 w-9 hover:scale-105"
+      >
+        <span className="inline-flex transition-transform duration-300 ease-out">
+          {darkMode ? <IconSun size={16} /> : <IconMoon size={16} />}
+        </span>
+        <span className="top-util-tip glass-tip" aria-hidden="true">
+          {darkMode ? copy.themeToLight : copy.themeToDark}
+        </span>
+      </button>
+    </div>
+  );
 
-        <div className="flex shrink-0 flex-col gap-1 px-3">
-          {nav.map((n) => (
-            <NavItem
-              key={n.key}
-              active={activeKey === n.key}
-              onClick={() => {
-                go(n.view);
-                setDrawerOpen(false);
-              }}
-              icon={n.icon}
-              label={n.label}
-            />
-          ))}
-        </div>
-
-        <div className="mx-6 my-4 h-px shrink-0 bg-line" />
-        <div className="flex shrink-0 flex-col gap-1 px-3">
-          <NavItem
-            active={false}
-            label="搜索命令"
-            icon={<IconSearch size={20} />}
-            onClick={() => {
-              setDrawerOpen(false);
-              openCommandPalette();
+  return (
+    <div id="app-root" className="relative flex h-screen overflow-hidden bg-page">
+      {/* 全局吸顶顶栏（桌面端与移动端一致：左侧 OpalCV 与右侧中/英、深浅模式同一高度吸顶） */}
+      {view.name !== "editor" ? (
+        <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between bg-page/78 px-4 backdrop-blur-md md:px-6">
+          <button
+            type="button"
+            onClick={() => go({ name: "home" })}
+            aria-label="OpalCV 返回工作台"
+            className="inline-flex items-center gap-2.5 text-left transition-opacity hover:opacity-85"
+            style={{
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif',
             }}
-            trailing={
-              <kbd className="hidden rounded border border-line px-1.5 py-0.5 text-[12px] font-normal leading-4 text-ink-400 md:block">
-                {typeof navigator !== "undefined" &&
-                /Mac/i.test(navigator.platform)
-                  ? "⌘ K"
-                  : "Ctrl K"}
-              </kbd>
-            }
-          />
-          <NavItem
-            active={false}
-            label="使用指南"
-            icon={<IconBookOpen size={20} />}
-            onClick={() => {
-              setDrawerOpen(false);
-              openUsageGuide();
-            }}
-          />
-        </div>
-
-        <div className="mt-auto shrink-0 px-3 pb-3 pt-6">
-          <div className="rounded-xl bg-subtle px-3 py-3 ring-1 ring-line">
-            <p className="flex items-center gap-1.5 text-[12px] font-bold text-ink-900">
-              <IconShield
-                size={13}
-                className={
-                  privacy.allowExternal ? "text-seal-600" : "text-brand-600"
-                }
-              />
-              {privacy.allowExternal ? "外部模型已开启" : "本地模式"}
-            </p>
-            <p className="mt-1 text-[12px] leading-relaxed text-ink-500">
-              {privacy.allowExternal
-                ? "本地模型不可用时可能发起外部请求，调用前会提示。"
-                : "数据不出本机，不发起任何外部请求。"}
-            </p>
-            <div className="mt-2 flex items-center gap-1.5 font-mono text-[12px] text-ink-500">
+          >
+            <Logo size={34} animated={false} flow className="shrink-0" />
+            <span className="-translate-y-[1px] text-[24px] font-bold leading-none tracking-[-0.035em] text-ink-900 sm:text-[26px]">
+              Opal
               <span
-                className={cx(
-                  "h-1.5 w-1.5 rounded-full",
-                  privacy.allowExternal
-                    ? "bg-seal-600"
-                    : "anim-pulse-dot bg-brand-500"
-                )}
-              />
-              {resumeCount} 份本机简历
-            </div>
-          </div>
+                className="bg-clip-text text-transparent"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(120deg, #38BDF8 0%, #6366F1 55%, #C084FC 100%)",
+                }}
+              >
+                CV
+              </span>
+            </span>
+          </button>
+          {globalControls}
+        </header>
+      ) : (
+        <div className="fixed right-3 top-2.5 z-40 md:right-5">
+          {globalControls}
         </div>
+      )}
+
+      {/* 桌面端（≥md）：左侧悬浮高透液态玻璃胶囊（纯主导航，更轻盈通透） */}
+      <nav
+        aria-label="主导航"
+        className="liquid-glass-rail fixed left-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-center gap-1.5 rounded-full px-2 py-2.5 md:flex"
+      >
+        <button
+          type="button"
+          onClick={() => go({ name: "home" })}
+          aria-label="OpalCV 工作台"
+          className="dock-icon h-10 w-10 hover:scale-105 hover:bg-transparent"
+        >
+          <Logo size={40} />
+          <span className="dock-tip glass-tip" aria-hidden="true">
+            {copy.brandTip}
+          </span>
+        </button>
+
+        <div className="my-1 h-px w-5 bg-ink-300/55" />
+
+        {nav.map((n) => (
+          <DockButton
+            key={n.key}
+            active={activeKey === n.key}
+            onClick={() => go(n.view)}
+            icon={n.icon}
+            label={n.label}
+          />
+        ))}
       </nav>
 
-      {/* Switch content immediately; entry animation does not block navigation. */}
-      <main className="mt-16 min-w-0 flex-1 overflow-hidden md:mt-0">
+      {/* 移动端（<md）：无边框呼吸灵动圆球 + 径向环绕纯图标菜单 */}
+      <MobileOrbNav actions={mobileOrbActions} />
+
+      {/* 主内容区：桌面端左侧为悬浮胶囊留出舒适呼吸空间，移动端全屏零遮挡 */}
+      <main className="min-w-0 flex-1 overflow-hidden md:pl-[84px]">
         <motion.div
           key={view.name}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{
-            opacity: 1,
-            y: 0,
-            transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
-          }}
+          initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={enterTransition}
           className={cx(
-            "h-full overflow-y-auto",
-            view.name === "editor" && "overflow-hidden"
+            "app-view h-full overflow-y-auto pt-14 pb-24 md:pb-0",
+            view.name === "editor" && "overflow-hidden pt-0 pb-0"
           )}
         >
           {view.name === "home" && <Home />}
@@ -358,11 +418,17 @@ function AppShell() {
             }
           >
             {view.name === "editor" && (
-              <Editor key={`${view.resumeId}:${view.panel ?? ""}`} resumeId={view.resumeId} initialPanel={view.panel} />
+              <Editor
+                key={`${view.resumeId}:${view.panel ?? ""}`}
+                resumeId={view.resumeId}
+                initialPanel={view.panel}
+              />
             )}
             {view.name === "models" && <Models />}
             {view.name === "settings" && <Settings />}
-            {view.name === "applications" && <Applications initialDueOnly={view.dueOnly} />}
+            {view.name === "applications" && (
+              <Applications initialDueOnly={view.dueOnly} />
+            )}
           </Suspense>
         </motion.div>
       </main>

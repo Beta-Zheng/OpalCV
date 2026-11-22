@@ -7,6 +7,8 @@ import { testBlock, testResume } from "./fixtures";
 
 const ALL_TEMPLATE_IDS = [
   "modern_single_column",
+  "swiss_grid",
+  "executive_sidebar",
   "classic_ats",
   "academic_photo",
   "latex_minimal",

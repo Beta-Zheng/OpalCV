@@ -60,6 +60,7 @@ interface PendingExternal {
   sectionId: string;
   blockId: string;
   action: AIAction;
+  providerId: string;
   providerName: string;
   providerHost: string;
   execute: () => void;
@@ -79,6 +80,7 @@ interface AppState {
   view: View;
   toasts: Toast[];
   pendingExternal: PendingExternal | null;
+  trustedExternalIds: string[];
   lastSavedAt: string | null;
   saveStatus: SaveStatus;
 
@@ -122,6 +124,7 @@ interface AppState {
   ) => void;
   queuedSuggestionCount: number;
   renameResume: (id: string, title: string) => void;
+  replaceResumeData: (id: string, data: ResumeData) => void;
   setTemplate: (id: string, templateId: string) => void;
   setTheme: (id: string, patch: Partial<Resume["theme"]>) => void;
   setAvatar: (id: string, url: string | null) => void;
@@ -164,7 +167,7 @@ interface AppState {
     blockId: string,
     action: AIAction
   ) => void;
-  confirmExternal: (proceed: boolean) => void;
+  confirmExternal: (proceed: boolean, trustForSession?: boolean) => void;
   acceptSuggestion: (sugId: string, edited?: Block) => boolean;
   cancelSuggestion: (sugId: string) => void;
   undoSuggestion: (sugId: string) => boolean;
@@ -352,6 +355,7 @@ export const useApp = create<AppState>()(
       view: { name: "home" },
       toasts: [],
       pendingExternal: null,
+      trustedExternalIds: [],
       lastSavedAt: null,
       saveStatus: "idle",
 
@@ -543,6 +547,8 @@ export const useApp = create<AppState>()(
 
       renameResume: (id, title) =>
         set((s) => withResume(s, id, (r) => ({ ...r, title }))),
+      replaceResumeData: (id, data) =>
+        set((s) => withResume(s, id, (r) => ({ ...r, data: structuredClone(data) }))),
       setResumeOptions: (id, patch) =>
         set((s) => withResume(s, id, (r) => ({ ...r, ...patch }))),
       createJobVersion: (id, company, role, jdText) => {
@@ -640,6 +646,7 @@ export const useApp = create<AppState>()(
           resumes: s.resumes.map((r) => (r.id === copy.id ? copy : r)),
           jds,
           pendingExternal: null,
+      trustedExternalIds: [],
           queuedSuggestionCount: 0,
           suggestions: s.suggestions.filter((s) => s.resume_id !== copy.id),
         }));
@@ -1106,6 +1113,10 @@ export const useApp = create<AppState>()(
             });
         };
         if (sel.kind === "confirm_external") {
+          if (get().trustedExternalIds.includes(sel.provider.id)) {
+            execute();
+            return;
+          }
           let providerHost: string;
           try {
             providerHost = new URL(sel.provider.base_url).host;
@@ -1122,6 +1133,7 @@ export const useApp = create<AppState>()(
               sectionId,
               blockId,
               action,
+              providerId: sel.provider.id,
               providerName: sel.provider.name,
               providerHost,
               execute: () => {
@@ -1156,9 +1168,15 @@ export const useApp = create<AppState>()(
         execute();
       },
 
-      confirmExternal: (proceed) => {
+      confirmExternal: (proceed, trustForSession = false) => {
         const pending = get().pendingExternal;
-        set({ pendingExternal: null });
+        set((s) => ({
+          pendingExternal: null,
+          trustedExternalIds:
+            proceed && trustForSession && pending
+              ? Array.from(new Set([...s.trustedExternalIds, pending.providerId]))
+              : s.trustedExternalIds,
+        }));
         if (!pending) return;
         if (proceed) {
           pending.execute();
@@ -1301,18 +1319,32 @@ export const useApp = create<AppState>()(
             models: exists
               ? s.models.map((x) => (x.id === m.id ? m : x))
               : [...s.models, m],
+            trustedExternalIds: s.trustedExternalIds.filter((id) => id !== m.id),
           };
         }),
       deleteModel: (id) =>
-        set((s) => ({ models: s.models.filter((m) => m.id !== id) })),
+        set((s) => ({
+          models: s.models.filter((m) => m.id !== id),
+          trustedExternalIds: s.trustedExternalIds.filter((x) => x !== id),
+        })),
       toggleModel: (id) =>
         set((s) => ({
           models: s.models.map((m) =>
             m.id === id ? { ...m, enabled: !m.enabled } : m
           ),
+          trustedExternalIds: s.trustedExternalIds.filter((x) => x !== id),
         })),
       setPrivacy: (patch) =>
-        set((s) => ({ privacy: { ...s.privacy, ...patch } })),
+        set((s) => {
+          const next = { ...s.privacy, ...patch };
+          return {
+            privacy: next,
+            trustedExternalIds:
+              !next.allowExternal || next.route === "local_only"
+                ? []
+                : s.trustedExternalIds,
+          };
+        }),
 
       importData: (raw, mode = "replace") => {
         try {
@@ -1399,6 +1431,7 @@ export const useApp = create<AppState>()(
                 ),
               },
               pendingExternal: null,
+      trustedExternalIds: [],
               queuedSuggestionCount: 0,
             }));
           } else
@@ -1408,6 +1441,7 @@ export const useApp = create<AppState>()(
               applications: data.applications ?? [],
               coverLetters: data.coverLetters ?? {},
               pendingExternal: null,
+      trustedExternalIds: [],
               queuedSuggestionCount: 0,
               view: { name: "home" },
             });
@@ -1438,6 +1472,7 @@ export const useApp = create<AppState>()(
           view: { name: "home" },
           lastSavedAt: null,
           pendingExternal: null,
+      trustedExternalIds: [],
         });
         flushSave();
       },

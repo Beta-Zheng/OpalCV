@@ -184,3 +184,39 @@ export async function decryptText(
     throw new Error("解密失败：密码错误或数据已被篡改");
   }
 }
+
+/* ---------------- 会话级主口令（仅存内存，不落盘） ---------------- */
+
+let sessionPassphrase: string | null = null;
+
+export function getSessionPassphrase(): string | null {
+  return sessionPassphrase;
+}
+
+export function setSessionPassphrase(passphrase: string | null): void {
+  sessionPassphrase = passphrase ? passphrase : null;
+}
+
+export function clearSessionPassphrase(): void {
+  sessionPassphrase = null;
+}
+
+/**
+ * 解析模型 API Key：
+ * - 明文或空值直接返回（保持向后兼容）
+ * - 密文则使用显式口令或内存会话口令解密；未解锁时抛出明确错误，绝不把密文发往外部服务
+ */
+export async function resolveApiKey(
+  apiKey: string | undefined | null,
+  passphrase?: string | null
+): Promise<string> {
+  if (!apiKey) return "";
+  if (!isEncryptedPayload(apiKey)) return apiKey;
+  const activePassphrase = passphrase ?? sessionPassphrase;
+  if (!activePassphrase) {
+    throw new Error(
+      "API Key 已使用主密码加密，请先前往「模型与隐私」输入主密码解锁后再调用模型"
+    );
+  }
+  return decryptText(apiKey, activePassphrase);
+}

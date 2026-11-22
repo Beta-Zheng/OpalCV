@@ -60,7 +60,7 @@ export default function UsageGuide() {
       width={mode === "welcome" ? "max-w-lg" : "max-w-2xl"}
     >
       <ModalHeader
-        title={mode === "welcome" ? "第一次使用 TouchstoneCV？" : "使用指南"}
+        title={mode === "welcome" ? "欢迎使用 OpalCV" : "使用指南"}
         sub={
           mode === "welcome"
             ? "跟着动画看一遍，再动手试一下。"

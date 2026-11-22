@@ -17,7 +17,7 @@ try {
   await page.goto(origin);
   await page.getByRole('heading', { name: '简历工作台', exact: true }).waitFor();
   await page.getByRole('button', {name:'投递记录',exact:true}).click();
-  await page.getByRole('heading', {name:'记录第一次投递',exact:true}).waitFor();
+  await page.getByRole('heading', {name:'求职进度，一处跟进',exact:true}).waitFor();
   assert.equal(await page.getByText('累计已投递', {exact:true}).count(),0);
   await page.screenshot({path:'.export-qa/usability-empty-applications.png'});
   await page.getByRole('button', {name:'工作台',exact:true}).click();

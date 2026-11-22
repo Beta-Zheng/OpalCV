@@ -15,7 +15,7 @@ import type {
   Section,
   SectionType,
 } from "../types";
-import { ACTION_LABELS, BULLET_STYLE_OPTIONS, SECTION_LABELS } from "../types";
+import { ACTION_LABELS, BULLET_STYLE_OPTIONS, EN_SECTION_LABELS, SECTION_LABELS } from "../types";
 import {
   cx,
   fileToDataUrl,
@@ -24,7 +24,9 @@ import {
   stripHtml,
 } from "../lib/utils";
 import { useApp, useAppSlice } from "../lib/store";
+import { actionHint, actionLabel, useT, useUiLang } from "../lib/i18n";
 import { selectProvider } from "../lib/ai";
+import { GlassSelect } from "./ui";
 import {
   IconArrowRight,
   IconCheck,
@@ -32,7 +34,9 @@ import {
   IconChevronUp,
   IconEye,
   IconEyeOff,
+  IconMoreHorizontal,
   IconPlus,
+  IconSettings,
   IconSpark,
   IconTrash,
   IconUpload,
@@ -95,7 +99,7 @@ function BoldButton({
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => wrapSelection(elRef.current, onChange)}
-      className="absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded border border-ink-200 bg-white/90 text-[12px] font-bold text-ink-500 transition hover:border-brand-400 hover:text-brand-700"
+      className="absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded border border-ink-200 bg-surface/90 text-[12px] font-bold text-ink-500 transition hover:border-brand-400 hover:text-brand-700"
       title="选中文字后点击：用 ** 包裹以加粗"
       aria-label="加粗选中文字"
     >
@@ -207,7 +211,7 @@ function RichTextEditor({
   };
   return (
     <div className="inline-editor relative">
-      <div className="inline-format absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-white/95">
+      <div className="inline-format absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-surface/95">
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -292,14 +296,15 @@ export function TagInput({
     setDraft("");
   };
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-ink-200 bg-white/80 px-2 py-1.5 transition focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/25">
+    <div className="liquid-input flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2">
       {values.map((v) => (
         <span
           key={v}
-          className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-200"
+          className="chip rounded-full bg-brand-50 px-2.5 text-brand-700"
         >
           {v}
           <button
+            type="button"
             onClick={() => onChange(values.filter((x) => x !== v))}
             className="opacity-60 transition hover:opacity-100"
             aria-label={`移除 ${v}`}
@@ -321,7 +326,7 @@ export function TagInput({
         }}
         onBlur={commit}
         placeholder={values.length ? "" : placeholder || "输入后回车添加"}
-        className="min-w-[110px] flex-1 bg-transparent text-[13px] outline-none placeholder:text-ink-500"
+        className="min-w-[110px] flex-1 bg-transparent text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
       />
     </div>
   );
@@ -356,6 +361,16 @@ function BulletMarker({
   return <span className="block h-[5px] w-[5px] rotate-45 bg-current" />;
 }
 
+const BULLET_LABEL_EN: Record<BulletStyleKey, string> = {
+  diamond: "Diamond",
+  disc: "Disc",
+  square: "Square",
+  circle: "Circle",
+  arrow: "Arrow",
+  check: "Check",
+  ordered: "Numbered",
+};
+
 /** 模块级要点列表样式选择器：与要点编辑器同处一行，改动即时作用于本模块所有条目 */
 function BulletStyleSelect({
   value,
@@ -366,6 +381,7 @@ function BulletStyleSelect({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
   useActionMenu(open, setOpen, ref);
   const cur =
     BULLET_STYLE_OPTIONS.find((o) => o.key === value) ??
@@ -377,16 +393,16 @@ function BulletStyleSelect({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="本模块要点列表样式（作用于该模块全部条目）"
+        title={t("本模块要点列表样式（作用于该模块全部条目）", "Bullet marker style for this section")}
         className={cx(
-          "editor-action inline-flex items-center gap-1 rounded-sm border px-2 text-[13px] font-medium transition-colors",
+          "editor-action inline-flex items-center gap-1 rounded-full px-2.5 text-[12.5px] font-medium transition-colors",
           open
-            ? "border-brand-400 bg-brand-50 text-brand-700"
-            : "border-ink-200 bg-white text-ink-500 hover:border-brand-400 hover:text-brand-700"
+            ? "bg-brand-50 text-brand-700"
+            : "bg-surface text-ink-500 shadow-xs hover:text-brand-700"
         )}
       >
         <span className="font-mono text-brand-600">{cur.sample}</span>
-        {cur.label}
+        {t(cur.label, BULLET_LABEL_EN[cur.key])}
         <IconChevronDown
           size={10}
           className={cx(
@@ -397,31 +413,33 @@ function BulletStyleSelect({
       </button>
       {open && (
         <div
-          role="menu" aria-label="成果列表样式"
-          className="app-menu absolute right-0 top-7 z-30 w-44 overflow-hidden rounded-lg border border-ink-200 bg-white p-1 shadow-xl shadow-ink-950/15"
+          role="menu"
+          aria-label={t("成果列表样式", "Bullet style")}
+          className="app-menu glass-tip absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-2xl p-1.5"
         >
           <p className="px-2 py-1 text-[12px] font-bold uppercase tracking-wider text-ink-400">
-            成果列表样式
+            {t("成果列表样式", "Bullet Style")}
           </p>
           {BULLET_STYLE_OPTIONS.map((o) => (
             <button
               key={o.key}
               type="button"
-              role="menuitemradio" tabIndex={-1}
+              role="menuitemradio"
+              tabIndex={-1}
               aria-checked={value === o.key}
               onClick={() => {
                 onChange(o.key);
                 setOpen(false);
               }}
               className={cx(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition",
+                "flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[12px] transition",
                 value === o.key
                   ? "bg-brand-50 font-semibold text-brand-700"
-                  : "text-ink-600 hover:bg-paper-100"
+                  : "text-ink-600 hover:bg-surface/80"
               )}
             >
               <span className="w-4 font-mono text-[12px]">{o.sample}</span>
-              {o.label}
+              {t(o.label, BULLET_LABEL_EN[o.key])}
               {value === o.key && <IconCheck size={11} className="ml-auto" />}
             </button>
           ))}
@@ -432,7 +450,7 @@ function BulletStyleSelect({
 }
 
 function BulletsEdit({
-  label = "主要成果",
+  label,
   value,
   marks,
   onChange,
@@ -449,6 +467,9 @@ function BulletsEdit({
   bulletStyle: BulletStyleKey;
   onBulletStyleChange: (v: BulletStyleKey) => void;
 }) {
+  const t = useT();
+  const resolvedLabel = label ?? t("主要成果", "Key Achievements");
+  const isAchievements = resolvedLabel === "主要成果" || resolvedLabel === "Key Achievements";
   const isMarked = (i: number) => marks?.[i] ?? true;
   const update = (i: number, html: string) =>
     onChange(value.map((b, idx) => (idx === i ? html : b)));
@@ -481,7 +502,7 @@ function BulletsEdit({
   return (
     <div className="sm:col-span-2 min-w-0">
       <div className="mb-1 flex items-center gap-2">
-        <span className="field-label mb-0">{label}</span>
+        <span className="field-label mb-0">{resolvedLabel}</span>
         <div className="ml-auto">
           <BulletStyleSelect
             value={bulletStyle}
@@ -504,11 +525,10 @@ function BulletsEdit({
                 aria-pressed={marked}
                 title={
                   marked
-                    ? "已勾选：预览显示列表符号（点击取消）"
-                    : "未勾选：预览不显示列表符号（点击勾选）"
+                    ? t("已勾选：预览显示列表符号（点击取消）", "Bullet marker shown (click to hide)")
+                    : t("未勾选：预览不显示列表符号（点击勾选）", "Bullet marker hidden (click to show)")
                 }
-                className="mt-[0.55rem] flex h-6 w-6 shrink-0 items-center justify-center rounded transition hover:bg-paper-200/80"
-                style={{ color: "#178a79" }}
+                className="mt-[0.55rem] flex h-6 w-6 shrink-0 items-center justify-center rounded text-brand-600 transition hover:bg-paper-200/80"
               >
                 <span
                   className={cx(
@@ -521,10 +541,14 @@ function BulletsEdit({
               </button>
               <div className="min-w-0 flex-1">
                 <RichTextEditor
-                  ariaLabel={`成果 ${i + 1}`}
+                  ariaLabel={`${t("成果", "Bullet")} ${i + 1}`}
                   value={b}
                   onChange={(html) => update(i, html)}
-                  placeholder={label === "主要成果" ? "做了什么，带来了什么结果" : "输入一条内容"}
+                  placeholder={
+                    isAchievements
+                      ? t("做了什么，带来了什么结果", "What you did and the measurable impact")
+                      : t("输入一条内容", "Enter a bullet point")
+                  }
                 />
               </div>
               <div className="achievement-actions flex shrink-0 flex-col">
@@ -533,7 +557,7 @@ function BulletsEdit({
                   onClick={() => move(i, -1)}
                   disabled={i === 0}
                   className="tool-btn h-5 w-5 disabled:opacity-30"
-                  aria-label="上移成果"
+                  aria-label={t("上移成果", "Move up")}
                 >
                   <IconChevronUp size={11} />
                 </button>
@@ -542,7 +566,7 @@ function BulletsEdit({
                   onClick={() => move(i, 1)}
                   disabled={i === value.length - 1}
                   className="tool-btn h-5 w-5 disabled:opacity-30"
-                  aria-label="下移成果"
+                  aria-label={t("下移成果", "Move down")}
                 >
                   <IconChevronDown size={11} />
                 </button>
@@ -551,7 +575,7 @@ function BulletsEdit({
                 type="button"
                 onClick={() => remove(i)}
                 className="achievement-actions tool-btn h-6 w-6 hover:bg-danger-100 hover:text-danger-600"
-                aria-label="删除成果"
+                aria-label={t("删除成果", "Remove bullet")}
               >
                 <IconX size={12} />
               </button>
@@ -563,7 +587,7 @@ function BulletsEdit({
           onClick={add}
           className="self-start inline-flex items-center gap-1 text-[12px] font-medium text-brand-600 transition hover:text-brand-700"
         >
-          <IconPlus size={12} /> {label === "主要成果" ? "添加成果" : "添加要点"}
+          <IconPlus size={12} /> {isAchievements ? t("添加成果", "Add Achievement") : t("添加要点", "Add Bullet")}
         </button>
       </div>
     </div>
@@ -575,14 +599,18 @@ function BulletsEdit({
 export function AIActionMenu({
   onAction,
   hasJD,
+  subtle,
 }: {
   onAction: (a: AIAction) => void;
   hasJD: boolean;
+  subtle?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useActionMenu(open, setOpen, menuRef);
-  const { models, privacy } = useAppSlice("models", "privacy");
+  const { models, privacy, go } = useAppSlice("models", "privacy", "go");
+  const uiLang = useUiLang();
+  const t = useT();
   const rules = selectProvider(models, privacy).kind === "rules";
   return (
     <div
@@ -598,34 +626,37 @@ export function AIActionMenu({
           setOpen((v) => !v);
         }}
         className={cx(
-          "editor-action inline-flex items-center gap-1.5 rounded-sm border px-3 text-[13px] font-medium transition-colors",
-          open
-            ? "border-brand-300 bg-brand-50 text-brand-700"
-            : "border-brand-200 bg-brand-50 text-brand-700 hover:border-brand-400 hover:bg-brand-100"
+          "editor-action inline-flex items-center gap-1.5 rounded-sm px-2.5 text-[12.5px] font-medium transition-all",
+          subtle && !open
+            ? "border border-transparent text-ink-500 opacity-75 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 hover:opacity-100"
+            : "ai-ring text-brand-700",
+          open && "ring-2 ring-brand-300/60"
         )}
-        aria-label="优化这段"
+        aria-label={t("优化这段", "Refine")}
         aria-haspopup="menu"
         aria-expanded={open}
       >
         <IconSpark size={13} />
-        优化这段
+        {t("优化这段", "Refine")}
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div
-            role="menu" aria-label="条目优化动作"
-          className="app-menu absolute right-0 top-8 z-30 w-60 overflow-hidden rounded-lg border border-ink-200 bg-white shadow-xl shadow-ink-950/15"
+            role="menu"
+            aria-label={t("条目优化动作", "Entry refinement actions")}
+            className="glass-tip app-menu absolute right-0 top-8 z-30 w-64 overflow-hidden rounded-2xl p-1"
           >
-            <p className="border-b border-ink-100 bg-paper-50 px-3 py-1.5 text-[12px] font-medium tracking-wide text-ink-400">
+            <p className="rounded-xl bg-subtle/70 px-3 py-1.5 text-[11.5px] font-medium text-ink-400">
               {rules
-                ? "规则检查：精简措辞与核对提示"
-                : "模型写作：生成后逐条确认"}
+                ? t("规则检查：精简措辞与核对提示", "Rule check: phrasing & review tips")
+                : t("模型写作：生成后逐条确认", "AI draft: review each change before applying")}
             </p>
             {(Object.keys(ACTION_LABELS) as AIAction[]).map((a) => (
               <button
                 key={a}
-                role="menuitem" tabIndex={-1}
+                role="menuitem"
+                tabIndex={-1}
                 disabled={
                   rules && ["rewrite", "expand", "translate"].includes(a)
                 }
@@ -634,23 +665,41 @@ export function AIActionMenu({
                   setOpen(false);
                   onAction(a);
                 }}
-                className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-brand-50"
+                className="flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition hover:bg-brand-50 disabled:opacity-45"
               >
-                <span className="mt-0.5 w-14 shrink-0 text-[12px] font-bold text-ink-800">
-                  {ACTION_LABELS[a].label}
+                <span className="mt-0.5 w-20 shrink-0 text-[12px] font-bold text-ink-800">
+                  {actionLabel(a, ACTION_LABELS[a].label, uiLang)}
                 </span>
-                <span className="text-[12px] leading-snug text-ink-400">
+                <span className="text-[11.5px] leading-snug text-ink-400">
                   {rules && ["rewrite", "expand", "translate"].includes(a)
-                    ? "需在模型与隐私中启用模型"
-                    : ACTION_LABELS[a].hint}
+                    ? t("需在模型与隐私中启用模型", "Enable a model in Models & Privacy")
+                    : actionHint(a, ACTION_LABELS[a].hint, uiLang)}
                   {a === "jd_match" && !hasJD && (
                     <em className="ml-1 not-italic text-seal-600">
-                      （未绑定 JD）
+                      {t("（未绑定 JD）", "(No JD linked)")}
                     </em>
                   )}
                 </span>
               </button>
             ))}
+            {rules && (
+              <div className="mt-1 pt-1">
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpen(false);
+                    go({ name: "models" });
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-[12px] font-medium text-brand-700 transition hover:bg-brand-50"
+                >
+                  <span>{t("前往「模型与隐私」启用模型", "Enable a model in Models & Privacy")}</span>
+                  <IconArrowRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -697,6 +746,7 @@ export function BlockCard({
     "deleteBlock",
     "moveBlock"
   );
+  const t = useT();
   const [open, setOpen] = useState(() => block.order === 0 || ![block.title, block.description, ...block.bullets, ...block.skills].some(value => stripHtml(value).trim()));
   useEffect(() => {
     if (revealLocation?.sectionId === section.section_id && revealLocation.blockId === block.block_id) setOpen(true);
@@ -717,7 +767,7 @@ export function BlockCard({
     block.title ||
     stripHtml(block.description).slice(0, 28) ||
     stripHtml(block.bullets[0] ?? "").slice(0, 28) ||
-    "（空白条目）";
+    t("（空白条目）", "(Empty entry)");
 
   return (
     <div
@@ -729,7 +779,10 @@ export function BlockCard({
     >
       <div
         data-editor-location-heading
-        className="flex flex-wrap cursor-pointer items-center gap-2 px-3 py-2"
+        className={cx(
+          "flex cursor-pointer items-center gap-2 px-3 py-2.5 transition-colors hover:bg-subtle/60",
+          open && "bg-subtle/40"
+        )}
         onClick={() => setOpen((v) => !v)}
       >
         <button
@@ -740,25 +793,29 @@ export function BlockCard({
           }}
           aria-label={open ? "折叠" : "展开"}
         >
-          {open ? (
-            <IconChevronDown size={14} />
-          ) : (
-            <IconChevronUp size={14} className="rotate-180" />
-          )}
+          <IconChevronDown
+            size={14}
+            className={cx(
+              "transition-transform duration-150",
+              !open && "-rotate-90"
+            )}
+          />
         </button>
-        <span className="chip shrink-0 bg-paper-200 font-mono text-ink-500">
-          {section.type === "custom" && block.type === "summary" ? "文本" : TYPE_LABEL[block.type]}
-        </span>
+        {section.type === "custom" && (
+          <span className="chip shrink-0 bg-paper-200 font-mono text-[11px] text-ink-500">
+            {block.type === "summary" ? "文本" : TYPE_LABEL[block.type]}
+          </span>
+        )}
         <span
           className={cx(
-            "min-w-0 flex-1 truncate text-[13px]",
-            block.title ? "font-medium text-ink-800" : "text-ink-500"
+            "min-w-0 flex-1 truncate text-[13.5px]",
+            block.title ? "font-semibold text-ink-800" : "text-ink-500"
           )}
         >
           {preview}
         </span>
         {block.start_date && (
-          <span className="shrink-0 font-mono text-[12px] text-ink-500">
+          <span className="hidden shrink-0 font-mono text-[11.5px] text-ink-400 sm:inline">
             {block.start_date}
             {block.end_date ? ` – ${block.end_date}` : ""}
           </span>
@@ -769,31 +826,34 @@ export function BlockCard({
         >
           <AIActionMenu
             hasJD={!!jd}
+            subtle={!open}
             onAction={(a) => onRequestAI(section.section_id, block.block_id, a)}
           />
           <div
             className="relative"
             ref={moreRef}
-
           >
             <button
               type="button"
-              className="editor-action rounded-sm px-3 py-1.5 text-[13px] text-ink-600 hover:bg-paper-100"
+              className="tool-btn h-8 w-8"
               aria-haspopup="menu"
               aria-expanded={moreOpen}
               aria-label={`更多操作 ${preview}`}
+              title="更多操作"
               onClick={() => setMoreOpen((v) => !v)}
             >
-              更多
+              <IconMoreHorizontal size={15} />
             </button>
             {moreOpen && (
               <div
-                role="menu" aria-label="条目操作"
-          className="app-menu absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-line bg-white p-1 shadow-lg"
+                role="menu"
+                aria-label={t("条目操作", "Entry actions")}
+                className="glass-tip app-menu absolute right-0 top-full z-20 mt-1 w-36 rounded-2xl p-1"
               >
                 <button
-                  role="menuitem" tabIndex={-1}
-                  className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-paper-100 disabled:opacity-40"
+                  role="menuitem"
+                  tabIndex={-1}
+                  className="block w-full rounded-xl px-3 py-2 text-left text-[12px] hover:bg-surface/80 disabled:opacity-40"
                   disabled={index === 0}
                   onClick={() => {
                     moveBlock(
@@ -805,11 +865,12 @@ export function BlockCard({
                     setMoreOpen(false);
                   }}
                 >
-                  上移
+                  {t("上移", "Move Up")}
                 </button>
                 <button
-                  role="menuitem" tabIndex={-1}
-                  className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-paper-100 disabled:opacity-40"
+                  role="menuitem"
+                  tabIndex={-1}
+                  className="block w-full rounded-xl px-3 py-2 text-left text-[12px] hover:bg-surface/80 disabled:opacity-40"
                   disabled={index === total - 1}
                   onClick={() => {
                     moveBlock(
@@ -821,11 +882,12 @@ export function BlockCard({
                     setMoreOpen(false);
                   }}
                 >
-                  下移
+                  {t("下移", "Move Down")}
                 </button>
                 <button
-                  role="menuitem" tabIndex={-1}
-                  className="block w-full rounded px-3 py-2 text-left text-[12px] hover:bg-paper-100"
+                  role="menuitem"
+                  tabIndex={-1}
+                  className="block w-full rounded-xl px-3 py-2 text-left text-[12px] hover:bg-surface/80"
                   onClick={() => {
                     patchBlock(resume.id, section.section_id, block.block_id, {
                       visible: !block.visible,
@@ -833,17 +895,18 @@ export function BlockCard({
                     setMoreOpen(false);
                   }}
                 >
-                  {block.visible ? "隐藏这段" : "显示这段"}
+                  {block.visible ? t("隐藏这段", "Hide Entry") : t("显示这段", "Show Entry")}
                 </button>
                 <button
-                  role="menuitem" tabIndex={-1}
-                  className="block w-full rounded px-3 py-2 text-left text-[12px] text-danger-700 hover:bg-danger-100"
+                  role="menuitem"
+                  tabIndex={-1}
+                  className="block w-full rounded-xl px-3 py-2 text-left text-[12px] text-danger-700 hover:bg-danger-100"
                   onClick={() => {
                     setConfirmDel(true);
                     setMoreOpen(false);
                   }}
                 >
-                  删除这段
+                  {t("删除这段", "Delete Entry")}
                 </button>
               </div>
             )}
@@ -870,7 +933,7 @@ export function BlockCard({
           >
             <div
               className={cx(
-                "grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2 border-t border-ink-100 px-3 py-3",
+                "grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2 bg-subtle/45 px-3.5 py-3.5",
                 !block.visible && "opacity-50"
               )}
             >
@@ -880,14 +943,14 @@ export function BlockCard({
                 <F
                   label={
                     block.type === "education_item"
-                      ? "学校"
+                      ? t("学校", "School")
                       : block.type === "work_experience_item"
-                      ? "公司"
+                      ? t("公司", "Company")
                       : block.type === "project_experience_item"
-                      ? "项目名称"
+                      ? t("项目名称", "Project Name")
                       : block.type === "certification"
-                      ? "名称"
-                      : "标题"
+                      ? t("名称", "Title")
+                      : t("标题", "Heading")
                   }
                 >
                   <input
@@ -895,8 +958,10 @@ export function BlockCard({
                     value={block.title}
                     placeholder={
                       block.type === "education_item"
-                        ? "XX 大学"
-                        : block.type === "custom_text" ? "分类或标题（可选）" : "公司 / 项目名"
+                        ? t("XX 大学", "Stanford University")
+                        : block.type === "custom_text"
+                        ? t("分类或标题（可选）", "Category or heading (optional)")
+                        : t("公司 / 项目名", "Company / Project")
                     }
                     onChange={(e) =>
                       patchBlock(
@@ -914,8 +979,10 @@ export function BlockCard({
                   <F
                     label={
                       block.type === "education_item"
-                        ? "专业与学历"
-                        : block.type === "custom_text" ? "补充信息" : "职位或角色"
+                        ? t("专业与学历", "Degree & Major")
+                        : block.type === "custom_text"
+                        ? t("补充信息", "Subtitle")
+                        : t("职位或角色", "Role / Title")
                     }
                   >
                     <input
@@ -923,8 +990,10 @@ export function BlockCard({
                       value={block.subtitle}
                       placeholder={
                         block.type === "education_item"
-                          ? "专业 · 学历"
-                          : block.type === "custom_text" ? "补充说明（可选）" : "职位 / 角色"
+                          ? t("专业 · 学历", "M.S. in Computer Science")
+                          : block.type === "custom_text"
+                          ? t("补充说明（可选）", "Details (optional)")
+                          : t("职位 / 角色", "Staff ML Engineer")
                       }
                       onChange={(e) =>
                         patchBlock(
@@ -937,7 +1006,9 @@ export function BlockCard({
                     />
                   </F>
                   <details className="sm:col-span-2" open={block.subtitles?.length ? true : undefined}>
-                    <summary className="cursor-pointer text-[12px] text-ink-500">更多补充信息</summary>
+                    <summary className="cursor-pointer text-[12px] text-ink-500">
+                      {t("更多补充信息", "More Subtitles")}
+                    </summary>
                   {(block.subtitles ?? []).length > 0 && (
                     <div className="sm:col-span-2 flex flex-col gap-1.5">
                       {block.subtitles!.map((st, i) => (
@@ -951,7 +1022,11 @@ export function BlockCard({
                           <input
                             className="field-input min-w-0 flex-1"
                             value={st}
-                            placeholder={block.type === 'education_item' ? '补充专业与学历' : '补充职位或角色'}
+                            placeholder={
+                              block.type === "education_item"
+                                ? t("补充专业与学历", "Additional degree / GPA / honors")
+                                : t("补充职位或角色", "Additional role or team")
+                            }
                             onChange={(e) => {
                               const next = [...(block.subtitles ?? [])];
                               next[i] = e.target.value;
@@ -965,7 +1040,7 @@ export function BlockCard({
                           />
                           <button
                             className="tool-btn hover:bg-danger-100 hover:text-danger-600"
-                            aria-label={`删除副标题 ${i + 1}`}
+                            aria-label={`${t("删除副标题", "Remove subtitle")} ${i + 1}`}
                             onClick={() =>
                               patchBlock(
                                 resume.id,
@@ -997,14 +1072,17 @@ export function BlockCard({
                       )
                     }
                   >
-                    <IconPlus size={12} /> {block.type === 'education_item' ? '补充专业与学历' : '补充职位或角色'}
+                    <IconPlus size={12} />{" "}
+                    {block.type === "education_item"
+                      ? t("补充专业与学历", "Add Degree / Honors")
+                      : t("补充职位或角色", "Add Role / Team")}
                   </button>
                   </details>
                 </Fragment>
               )}
               {isEntry && (
                 <>
-                  <F label="开始时间">
+                  <F label={t("开始时间", "Start Date")}>
                     <input
                       className="field-input font-mono"
                       value={block.start_date}
@@ -1019,11 +1097,11 @@ export function BlockCard({
                       }
                     />
                   </F>
-                  <F label="结束时间">
+                  <F label={t("结束时间", "End Date")}>
                     <input
                       className="field-input font-mono"
                       value={block.end_date}
-                      placeholder="至今 / 2024-06"
+                      placeholder={t("至今 / 2024-06", "Present / 2024-06")}
                       onChange={(e) =>
                         patchBlock(
                           resume.id,
@@ -1037,11 +1115,11 @@ export function BlockCard({
                 </>
               )}
               {block.type === "certification" && (
-                <F label="时间">
+                <F label={t("时间", "Year / Date")}>
                   <input
                     className="field-input font-mono"
                     value={block.start_date}
-                    placeholder="2023"
+                    placeholder="2024"
                     onChange={(e) =>
                       patchBlock(
                         resume.id,
@@ -1055,15 +1133,16 @@ export function BlockCard({
               )}
 
               {block.type === "summary" || block.type === "custom_text" ? (
-                /* 不能用 F（<label>）包 RichTextEditor：label 的 labeled control 会命中
-                 * 工具栏的 B 按钮（button 是 labelable 元素），点击描述区域内任何非交互
-                 * 内容都会被转发为对 B 的一次合成点击 —— execCommand("bold") 被意外执行、
-                 * 焦点被按钮抢走，用户表现为「描述无法编辑」。要点区正是用了 div 包装
-                 * 才一直正常。两处编辑器的结构必须保持一致（均为 div，见 BulletsEdit）。 */
                 <div className="sm:col-span-2 min-w-0">
-                  <span className="field-label">{section.type === "summary" ? "个人总结" : section.type === "skills" ? "技能说明" : "正文"}</span>
+                  <span className="field-label">
+                    {section.type === "summary"
+                      ? t("个人总结", "Summary")
+                      : section.type === "skills"
+                      ? t("技能说明", "Skills Overview")
+                      : t("正文", "Body")}
+                  </span>
                   <RichTextEditor
-                    ariaLabel={section.type === "summary" ? "个人总结" : "正文"}
+                    ariaLabel={section.type === "summary" ? t("个人总结", "Summary") : t("正文", "Body")}
                     value={block.description}
                     onChange={(html) =>
                       patchBlock(
@@ -1073,17 +1152,21 @@ export function BlockCard({
                         { description: html }
                       )
                     }
-                    placeholder={section.type === "summary" ? "简要介绍经验、专长与代表成果" : "填写内容"}
+                    placeholder={
+                      section.type === "summary"
+                        ? t("简要介绍经验、专长与代表成果", "Brief overview of experience, strengths, and key impact")
+                        : t("填写内容", "Enter content")
+                    }
                   />
                 </div>
               ) : null}
 
               {block.type === "skill_group" && (
-                <F label="组名" className="sm:col-span-2">
+                <F label={t("组名", "Category")} className="sm:col-span-2">
                   <input
                     className="field-input"
                     value={block.title}
-                    placeholder="如：核心技术"
+                    placeholder={t("如：核心技术", "e.g., AI & Modeling")}
                     onChange={(e) =>
                       patchBlock(
                         resume.id,
@@ -1097,7 +1180,7 @@ export function BlockCard({
               )}
               {(block.type === "skill_group" ||
                 block.type === "project_experience_item") && (
-                <F label="技能标签" className="sm:col-span-2">
+                <F label={t("技能标签", "Skills / Tags")} className="sm:col-span-2">
                   <TagInput
                     values={block.skills}
                     onChange={(v) =>
@@ -1108,16 +1191,32 @@ export function BlockCard({
                         { skills: v }
                       )
                     }
-                    placeholder="React、TypeScript…"
+                    placeholder={t("React、TypeScript…", "PyTorch, JAX, TypeScript…")}
                   />
                 </F>
               )}
 
-              {block.type === "custom_text" && !(showExtras || block.subtitle || block.subtitles?.length) && <button className="text-left text-[13px] text-ink-500" onClick={() => setShowExtras(true)}>添加补充信息</button>}
-              {((block.type === "summary" || block.type === "custom_text") && !(showPoints || block.bullets.length > 0)) && <button className="sm:col-span-2 text-left text-[13px] text-brand-700" onClick={() => setShowPoints(true)}>添加要点列表</button>}
+              {block.type === "custom_text" && !(showExtras || block.subtitle || block.subtitles?.length) && (
+                <button className="text-left text-[13px] text-ink-500" onClick={() => setShowExtras(true)}>
+                  {t("添加补充信息", "Add Subtitle")}
+                </button>
+              )}
+              {((block.type === "summary" || block.type === "custom_text") && !(showPoints || block.bullets.length > 0)) && (
+                <button className="sm:col-span-2 text-left text-[13px] text-brand-700" onClick={() => setShowPoints(true)}>
+                  {t("添加要点列表", "Add Bullet List")}
+                </button>
+              )}
               {(isEntry || ((block.type === "custom_text" || block.type === "summary") && (showPoints || block.bullets.length > 0))) && (
                 <BulletsEdit
-                  label={block.type === "summary" ? "总结要点" : block.type === "custom_text" ? "内容要点" : block.type === "education_item" ? "在校经历（可选）" : "主要成果"}
+                  label={
+                    block.type === "summary"
+                      ? t("总结要点", "Summary Highlights")
+                      : block.type === "custom_text"
+                      ? t("内容要点", "Highlights")
+                      : block.type === "education_item"
+                      ? t("在校经历（可选）", "Coursework & Honors (Optional)")
+                      : t("主要成果", "Key Achievements")
+                  }
                   value={block.bullets}
                   marks={block.bullet_marks}
                   onChange={(v) =>
@@ -1142,9 +1241,12 @@ export function BlockCard({
       <Confirm
         open={confirmDel}
         danger
-        title="删除该条目？"
-        desc={`「${preview}」将从简历中移除，此操作不可撤销。`}
-        confirmText="删除"
+        title={t("删除该条目？", "Delete this entry?")}
+        desc={t(
+          `「${preview}」将从简历中移除，此操作不可撤销。`,
+          `"${preview}" will be permanently removed from this resume.`
+        )}
+        confirmText={t("删除", "Delete")}
         onConfirm={() => {
           deleteBlock(resume.id, section.section_id, block.block_id);
           setConfirmDel(false);
@@ -1187,6 +1289,25 @@ export function SectionCard({
   );
   const [confirmDel, setConfirmDel] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
+  const [secMenuOpen, setSecMenuOpen] = useState(false);
+  const secMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!secMenuOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!secMenuRef.current?.contains(e.target as Node)) setSecMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSecMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [secMenuOpen]);
+  const [collapsed, setCollapsed] = useState(false);
+  const t = useT();
   const visibleBlocks = section.blocks;
   // 模块级要点样式：本模块设置优先，未设置则继承全局默认
   const bulletStyle: BulletStyleKey = resolveBulletStyle(
@@ -1199,13 +1320,11 @@ export function SectionCard({
   return (
     <section
       className={cx(
-        "rounded-xl border bg-white transition-all duration-200",
-        section.visible
-          ? "border-line"
-          : "border-dashed border-ink-200 opacity-70"
+        "soft-panel rounded-[22px] transition-all duration-200",
+        !section.visible && "opacity-65"
       )}
     >
-      <header data-editor-location-heading className="flex items-center gap-2 border-b border-ink-100 px-3 py-2.5">
+      <header data-editor-location-heading className="flex items-center gap-2 px-4 pb-2 pt-3.5">
         {dragHandle}
         {editingTitle ? (
           <input
@@ -1226,7 +1345,14 @@ export function SectionCard({
           />
         ) : (
           <h3
-            className="font-display text-[16px] font-bold text-ink-900"
+            onDoubleClick={() => {
+              if (section.type !== "basic_info") setEditingTitle(true);
+            }}
+            title={section.type !== "basic_info" ? "双击可重命名栏目" : undefined}
+            className={cx(
+              "font-display text-[15.5px] font-bold text-ink-900",
+              section.type !== "basic_info" && "cursor-text"
+            )}
           >
             {section.title}
             {section.type === "custom" && (
@@ -1238,41 +1364,93 @@ export function SectionCard({
         )}
         {section.type !== "basic_info" && visibleBlocks.length > 0 && (
           <span className="text-[12px] text-ink-400">
-            {visibleBlocks.length} 条
+            {t(`${visibleBlocks.length} 条`, `${visibleBlocks.length} ${visibleBlocks.length === 1 ? "item" : "items"}`)}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {section.type !== 'basic_info' && <details className="relative">
-            <summary className="cursor-pointer px-2 py-2 text-[12px] text-ink-500">栏目设置</summary>
-            <div className="absolute right-0 z-20 w-52 rounded-lg border border-line bg-white p-3 shadow-lg">
-              <label className="text-[13px]">栏目用途
-                <select data-ui-select aria-label={`栏目用途：${section.title}`} className="field-input mt-1" value={section.type}
-                  onChange={e => setSectionType(resume.id, section.section_id, e.target.value as Exclude<SectionType, 'basic_info'>)}>
-                  {Object.entries(SECTION_LABELS).filter(([type]) => type !== 'basic_info').map(([type,label]) => <option key={type} value={type}>{label}</option>)}
-                </select>
-              </label>
-              <p className="mt-2 text-[12px] text-ink-500">用于内容检查，保留现有文字与条目。</p>
-              <button className="mt-2 text-[13px] text-brand-700" onClick={() => setEditingTitle(true)}>重命名栏目</button>
+          {section.type !== "basic_info" && (
+            <div ref={secMenuRef} className="relative">
+              <button
+                type="button"
+                className={cx(
+                  "tool-btn",
+                  secMenuOpen && "bg-brand-50 text-brand-700"
+                )}
+                aria-label={t("栏目设置", "Section settings")}
+                aria-expanded={secMenuOpen}
+                title={t("栏目设置（用途与重命名）", "Section settings (type & rename)")}
+                onClick={() => setSecMenuOpen((v) => !v)}
+              >
+                <IconSettings size={15} />
+              </button>
+              {secMenuOpen && (
+                <div className="liquid-glass absolute right-0 top-full z-30 mt-1.5 w-60 rounded-2xl p-3.5">
+                  <div className="block text-[12px] font-medium text-ink-600">
+                    <span className="mb-1.5 block">{t("栏目用途", "Section Type")}</span>
+                    <GlassSelect
+                      ariaLabel={`${t("栏目用途", "Section type")}: ${section.title}`}
+                      className="w-full"
+                      value={section.type}
+                      onChange={(v) =>
+                        setSectionType(
+                          resume.id,
+                          section.section_id,
+                          v as Exclude<SectionType, "basic_info">
+                        )
+                      }
+                      options={Object.entries(SECTION_LABELS)
+                        .filter(([type]) => type !== "basic_info")
+                        .map(([type, label]) => ({
+                          value: type,
+                          label: t(label, EN_SECTION_LABELS[type as SectionType] ?? label),
+                        }))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-3 w-full rounded-full bg-subtle px-3 py-1.5 text-center text-[12.5px] font-medium text-brand-700 transition hover:bg-brand-50"
+                    onClick={() => {
+                      setSecMenuOpen(false);
+                      setEditingTitle(true);
+                    }}
+                  >
+                    {t("重命名栏目", "Rename Section")}
+                  </button>
+                </div>
+              )}
             </div>
-          </details>}
+          )}
 
           <button
-            className="tool-btn"
+            type="button"
+            className="tool-btn rounded-full"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? t("展开模块", "Expand section") : t("折叠模块", "Collapse section")}
+            title={collapsed ? t("展开模块", "Expand section") : t("折叠模块", "Collapse section")}
+          >
+            <IconChevronDown
+              size={15}
+              className={cx("transition-transform duration-200", collapsed && "-rotate-90")}
+            />
+          </button>
+          <button
+            className="tool-btn rounded-full"
             onClick={() => toggleSection(resume.id, section.section_id)}
-            aria-label="显示/隐藏模块"
+            aria-label={t("显示/隐藏模块", "Toggle visibility")}
             title={
               section.visible
-                ? "隐藏模块（保留排序位置，不参与预览/导出）"
-                : "显示模块"
+                ? t("隐藏模块（保留排序位置，不参与预览/导出）", "Hide section from preview & export")
+                : t("显示模块", "Show section")
             }
           >
             {section.visible ? <IconEye size={15} /> : <IconEyeOff size={15} />}
           </button>
           {section.type === "custom" && (
             <button
-              className="tool-btn hover:bg-danger-100 hover:text-danger-600"
+              className="tool-btn rounded-full hover:bg-danger-100 hover:text-danger-600"
               onClick={() => setConfirmDel(true)}
-              aria-label="删除模块"
+              aria-label={t("删除模块", "Delete section")}
             >
               <IconTrash size={15} />
             </button>
@@ -1280,23 +1458,24 @@ export function SectionCard({
         </div>
       </header>
 
-      {!section.visible ? (
+      {collapsed ? null : !section.visible ? (
         <p className="px-4 py-3 text-[12px] text-ink-400">
-          栏目已隐藏，不参与预览和导出。
+          {t("栏目已隐藏，不参与预览和导出。", "Section hidden from preview and export.")}
         </p>
       ) : section.type === "basic_info" ? (
         <BasicInfoEditor resume={resume} />
       ) : visibleBlocks.length === 0 ? (
         <div className="flex items-center justify-between px-4 py-3">
-          <p className="text-[12px] text-ink-500">暂无内容</p>
+          <p className="text-[12px] text-ink-500">{t("暂无内容", "No entries yet")}</p>
           <button
             onClick={() => addBlock(resume.id, section.section_id)}
             className="inline-flex items-center gap-1 text-[12px] font-medium text-brand-600 transition hover:text-brand-700"
           >
-            <IconPlus size={13} /> 添加
-            {section.type === "custom"
-              ? section.title
-              : SECTION_LABELS[section.type]}
+            <IconPlus size={13} />{" "}
+            {t(
+              `添加${section.type === "custom" ? section.title : SECTION_LABELS[section.type]}`,
+              `Add ${section.type === "custom" ? section.title : EN_SECTION_LABELS[section.type]}`
+            )}
           </button>
         </div>
       ) : (
@@ -1319,10 +1498,11 @@ export function SectionCard({
             onClick={() => addBlock(resume.id, section.section_id)}
             className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-200 py-2 text-[12px] font-medium text-ink-400 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700"
           >
-            <IconPlus size={13} /> 添加
-            {section.type === "custom"
-              ? section.title
-              : SECTION_LABELS[section.type]}
+            <IconPlus size={13} />{" "}
+            {t(
+              `添加${section.type === "custom" ? section.title : SECTION_LABELS[section.type]}`,
+              `Add ${section.type === "custom" ? section.title : EN_SECTION_LABELS[section.type]}`
+            )}
           </button>
         </div>
       )}
@@ -1330,9 +1510,12 @@ export function SectionCard({
       <Confirm
         open={confirmDel}
         danger
-        title="删除整个模块？"
-        desc={`「${section.title}」及其 ${section.blocks.length} 个条目将被移除。`}
-        confirmText="删除模块"
+        title={t("删除整个模块？", "Delete entire section?")}
+        desc={t(
+          `「${section.title}」及其 ${section.blocks.length} 个条目将被移除。`,
+          `"${section.title}" and its ${section.blocks.length} entries will be removed.`
+        )}
+        confirmText={t("删除模块", "Delete Section")}
         onConfirm={() => {
           deleteSection(resume.id, section.section_id);
           setConfirmDel(false);
@@ -1413,18 +1596,19 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
     "setSchoolBadge",
     "toast"
   );
+  const t = useT();
   const b = resume.data.basic_info;
   const fields: Array<{
     key: "name" | "title" | "email" | "phone" | "location" | "website";
     label: string;
     ph: string;
   }> = [
-    { key: "name", label: "姓名", ph: "张三" },
-    { key: "title", label: "目标职位", ph: "高级前端工程师" },
-    { key: "email", label: "邮箱", ph: "you@example.com" },
-    { key: "phone", label: "电话", ph: "138-0000-0000" },
-    { key: "location", label: "所在城市", ph: "上海" },
-    { key: "website", label: "主页 / GitHub", ph: "github.com/you" },
+    { key: "name", label: t("姓名", "Full Name"), ph: t("张三", "Alex Chen") },
+    { key: "title", label: t("目标职位", "Target Role"), ph: t("高级前端工程师", "Senior Frontend Engineer") },
+    { key: "email", label: t("邮箱", "Email"), ph: "you@example.com" },
+    { key: "phone", label: t("电话", "Phone"), ph: "138-0000-0000" },
+    { key: "location", label: t("所在城市", "Location"), ph: t("上海", "San Francisco") },
+    { key: "website", label: t("主页 / GitHub", "Website / GitHub"), ph: "github.com/you" },
   ];
 
   const handleImage = async (
@@ -1481,7 +1665,7 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
       {/* 自定义信息项：固定六项之外的补充字段（如 期望薪资 / 政治面貌），随联系方式一行渲染 */}
       <div className="sm:col-span-2">
         <div className="mb-1 flex items-center justify-between">
-          <span className="field-label">补充信息</span>
+          <span className="field-label">{t("补充信息", "Additional Info")}</span>
           <button
             type="button"
             className="inline-flex items-center gap-1 text-[12px] font-medium text-brand-600 transition hover:text-brand-700"
@@ -1494,14 +1678,17 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
               })
             }
           >
-            <IconPlus size={12} /> 添加信息
+            <IconPlus size={12} /> {t("添加信息", "Add Field")}
           </button>
         </div>
         {(b.custom_fields ?? []).length === 0 && (
           <details className="text-[12px] text-ink-500">
-            <summary className="cursor-pointer">哪些信息适合放在这里？</summary>
+            <summary className="cursor-pointer">{t("哪些信息适合放在这里？", "What belongs here?")}</summary>
             <p className="mt-1">
-              可按岗位要求补充到岗时间等信息，填写名称与内容后显示在简历上。
+              {t(
+                "可按岗位要求补充到岗时间等信息，填写名称与内容后显示在简历上。",
+                "Add optional items like work authorization, availability, or LinkedIn URL."
+              )}
             </p>
           </details>
         )}
@@ -1512,8 +1699,8 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
                 <input
                   className="field-input w-24 shrink-0"
                   value={f.label}
-                  placeholder="字段名"
-                  aria-label={`信息项字段名 ${i + 1}`}
+                  placeholder={t("字段名", "Label")}
+                  aria-label={`${t("信息项字段名", "Custom field label")} ${i + 1}`}
                   onChange={(e) => {
                     const next = [...(b.custom_fields ?? [])];
                     next[i] = { ...next[i], label: e.target.value };
@@ -1523,8 +1710,8 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
                 <input
                   className="field-input min-w-0 flex-1"
                   value={f.value}
-                  placeholder="内容（如 20-30k）"
-                  aria-label={`信息项内容 ${i + 1}`}
+                  placeholder={t("内容（如 20-30k）", "Value (e.g., US Citizen / LinkedIn)")}
+                  aria-label={`${t("信息项内容", "Custom field value")} ${i + 1}`}
                   onChange={(e) => {
                     const next = [...(b.custom_fields ?? [])];
                     next[i] = { ...next[i], value: e.target.value };

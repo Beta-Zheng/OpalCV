@@ -31,11 +31,12 @@ function subtitleParts(b: Block): string[] {
   return [b.subtitle, ...(b.subtitles ?? [])].filter(Boolean);
 }
 
-/** 联系方式项：固定四项 + 自定义信息项（label：value），自定义项两者都有内容才显示 */
-function contactItems(info: Resume["data"]["basic_info"]): string[] {
+/** 联系方式项：固定四项 + 自定义信息项（按中/英版式自动选用全角或半角冒号） */
+function contactItems(info: Resume["data"]["basic_info"], locale?: "zh" | "en"): string[] {
   const base = [info.email, info.phone, info.location, info.website].filter(Boolean);
+  const sep = locale === "en" ? ": " : "：";
   const extra = (info.custom_fields ?? [])
-    .map((f) => [f.label?.trim(), f.value?.trim()].filter(Boolean).join("："))
+    .map((f) => [f.label?.trim(), f.value?.trim()].filter(Boolean).join(sep))
     .filter(Boolean);
   return [...base, ...extra];
 }
@@ -177,11 +178,63 @@ function BulletList({
 }
 
 function EntryBody({ block, style }: { block: Block; style: TStyle }) {
-  const { color, isATS, skill, showLocation, headerLayout, bulletStyle } = style;
+  const { color, isATS, skill, showLocation, headerLayout, bulletStyle, variant } = style;
   const bullets = block.bullets.filter(Boolean);
   const hasContent =
     block.title || block.subtitle || block.subtitles?.length || block.description || bullets.length > 0 || block.skills.length > 0 || (showLocation && block.location);
   if (!hasContent) return null;
+
+  // LaTeX / 北美大厂极简版式：技能组紧凑单行（Category: Skill A, Skill B），条目采用地道两行层级
+  if (variant === "latex") {
+    if (block.type === "skill_group" && block.skills.length > 0) {
+      return (
+        <div data-resume-entry={block.block_id} className="mb-[calc(var(--bullet-gap)*1.1)] break-inside-avoid text-[0.91em] leading-[var(--lh)] text-[#1a1a1a]">
+          {block.title && <strong className="font-bold text-[#111]">{renderRich(block.title)}: </strong>}
+          <span>{block.skills.join(", ")}</span>
+        </div>
+      );
+    }
+    const subText = subtitleParts(block).join(" · ");
+    return (
+      <div data-resume-entry={block.block_id} className="mb-[var(--entry-gap)] break-inside-avoid">
+        {(block.title || dateRange(block)) && (
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-[1.01em] font-bold leading-snug text-[#111]">
+              {renderRich(block.title)}
+            </p>
+            {dateRange(block) && (
+              <p className="shrink-0 text-[0.86em] font-medium tabular-nums text-[#222]">
+                {dateRange(block)}
+              </p>
+            )}
+          </div>
+        )}
+        {(subText || (showLocation && block.location)) && (
+          <div className="flex items-baseline justify-between gap-3 text-[0.91em] italic text-[#333]">
+            <p className="min-w-0">{subText ? renderRich(subText) : null}</p>
+            {showLocation && block.location && (
+              <p className="shrink-0 text-[0.9em]">{block.location}</p>
+            )}
+          </div>
+        )}
+        {block.description && (
+          <p className="mt-[var(--bullet-gap)] whitespace-pre-line text-[0.92em] leading-[var(--lh)] text-[#222]">
+            {renderRich(block.description)}
+          </p>
+        )}
+        {bullets.length > 0 && (
+          <BulletList bullets={bullets} marks={block.bullet_marks} bulletStyle={bulletStyle} color={color} isATS />
+        )}
+        {block.skills.length > 0 && (
+          <p className="mt-[var(--bullet-gap)] text-[0.86em] text-[#333]">
+            <span className="font-semibold text-[#111]">Tech: </span>
+            {block.skills.join(", ")}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div data-resume-entry={block.block_id} className="mb-[var(--entry-gap)] break-inside-avoid">
       {(block.title || subtitleParts(block).length > 0) &&
@@ -440,7 +493,7 @@ function AcademicPhotoSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
   const color = resume.theme.primary_color;
   const fs = resume.theme.font_size;
   const info = resume.data.basic_info;
-  const contacts = contactItems(info);
+  const contacts = contactItems(info, resume.locale);
   const basicSection = resume.data.sections.find((s) => s.type === "basic_info");
   const basicVisible = basicSection?.visible ?? true;
   const bodySections = orderedVisible(resume.data).filter((s) => s.type !== "basic_info");
@@ -520,9 +573,174 @@ function ContactBar({ contacts, className, separator = "|" }: { contacts: string
   );
 }
 
+/** 瑞士网格时间轴模板：左侧 116px 栏目列，右侧高可读内容列，极简杂志排版 */
+function SwissGridSheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
+  const color = resume.theme.primary_color;
+  const fs = resume.theme.font_size;
+  const info = resume.data.basic_info;
+  const contacts = contactItems(info, resume.locale);
+  const basicSection = resume.data.sections.find((s) => s.type === "basic_info");
+  const basicVisible = basicSection?.visible ?? true;
+  const bodySections = orderedVisible(resume.data).filter((s) => s.type !== "basic_info");
+  const style: TStyle = {
+    color,
+    isATS: false,
+    variant: "modern",
+    bullet: "disc",
+    bulletStyle: resume.theme.bullet_style ?? "disc",
+    skill: "chip",
+    showLocation: true,
+    headerLayout: resume.theme.header_layout ?? "row",
+  };
+
+  return (
+    <div
+      className={cx("resume-sheet bg-white", !forPrint && "shadow-xl shadow-ink-950/15")}
+      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density) }}
+    >
+      {basicVisible && (info.name || info.title || contacts.length > 0) && (
+        <header
+          data-resume-section={basicSection?.section_id}
+          className="mb-[var(--sec-gap)] border-b-2 pb-[var(--head-gap)]"
+          style={{ borderColor: "#1B1C1F" }}
+        >
+          <div className="grid grid-cols-[116px_minmax(0,1fr)] items-end gap-5">
+            <div className="pb-1">
+              <span
+                className="inline-block h-1.5 w-10 rounded-full"
+                style={{ backgroundColor: color }}
+              />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h1
+                  className="font-bold leading-none tracking-tight text-ink-900"
+                  style={{ fontSize: "2.25em" }}
+                >
+                  {renderRich(info.name || "未命名")}
+                </h1>
+                {info.title && (
+                  <p className="text-[1.02em] font-semibold" style={{ color }}>
+                    {renderRich(info.title)}
+                  </p>
+                )}
+              </div>
+              <ContactBar
+                contacts={contacts}
+                separator="·"
+                className="mt-2 text-[0.82em] text-ink-500"
+              />
+            </div>
+          </div>
+        </header>
+      )}
+      <main>
+        {bodySections.map((section) => {
+          const blocks = visibleBlocks(section);
+          if (section.type === "summary" && !blocks.some(blockHasContent)) return null;
+          if (blocks.length === 0 && section.type !== "summary") return null;
+          const secStyle: TStyle = {
+            ...style,
+            bulletStyle: resolveBulletStyle(section.bullet_style, style.bulletStyle),
+          };
+          return (
+            <section
+              key={section.section_id}
+              data-resume-section={section.section_id}
+              className="mb-[var(--sec-gap)] grid grid-cols-[116px_minmax(0,1fr)] gap-5 border-b border-line pb-[var(--head-gap)] last:border-b-0 last:pb-0"
+            >
+              <h2
+                className="pt-0.5 text-[0.92em] font-bold uppercase tracking-wider"
+                style={{ color, breakAfter: "avoid" }}
+              >
+                {section.title}
+              </h2>
+              <div className="min-w-0">
+                {blocks.map((b) => (
+                  <EntryBody key={b.block_id} block={b} style={secStyle} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </main>
+    </div>
+  );
+}
+
+/** 现代双栏侧边栏模板：左侧淡染侧栏（联系、技能、教育、证书），右侧主栏（总结、工作、项目、自定义） */
+function ExecutiveSidebarSheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
+  const color = resume.theme.primary_color;
+  const fs = resume.theme.font_size;
+  const info = resume.data.basic_info;
+  const contacts = contactItems(info, resume.locale);
+  const basicSection = resume.data.sections.find((s) => s.type === "basic_info");
+  const basicVisible = basicSection?.visible ?? true;
+  const bodySections = orderedVisible(resume.data).filter((s) => s.type !== "basic_info");
+  const sideTypes: SectionType[] = ["skills", "education", "certifications"];
+  const sideSections = bodySections.filter((s) => sideTypes.includes(s.type));
+  const mainSections = bodySections.filter((s) => !sideTypes.includes(s.type));
+  const style: TStyle = {
+    color,
+    isATS: false,
+    variant: "modern",
+    bullet: "diamond",
+    bulletStyle: resume.theme.bullet_style ?? "diamond",
+    skill: "chip",
+    showLocation: true,
+    headerLayout: resume.theme.header_layout ?? "row",
+  };
+  const sideStyle: TStyle = { ...style, headerLayout: "stack" };
+
+  return (
+    <div
+      className={cx("resume-sheet bg-white", !forPrint && "shadow-xl shadow-ink-950/15")}
+      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density) }}
+    >
+      {basicVisible && (info.name || info.title || contacts.length > 0) && (
+        <header
+          data-resume-section={basicSection?.section_id}
+          className="mb-[var(--sec-gap)] rounded-xl px-5 py-4"
+          style={{ backgroundColor: `${color}0D`, borderLeft: `4px solid ${color}` }}
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h1 className="font-bold leading-tight text-ink-900" style={{ fontSize: "2.1em" }}>
+              {renderRich(info.name || "未命名")}
+            </h1>
+            {info.title && (
+              <p className="text-[1.05em] font-semibold" style={{ color }}>
+                {renderRich(info.title)}
+              </p>
+            )}
+          </div>
+          <ContactBar contacts={contacts} separator="·" className="mt-2 text-[0.82em] text-ink-600" />
+        </header>
+      )}
+      <div className="grid grid-cols-[216px_minmax(0,1fr)] items-start gap-6">
+        <aside className="min-w-0 rounded-xl bg-paper-50 p-3.5 ring-1 ring-line">
+          {sideSections.map((s) => (
+            <SectionBlock key={s.section_id} section={s} style={sideStyle} />
+          ))}
+        </aside>
+        <main className="min-w-0">
+          {mainSections.map((s) => (
+            <SectionBlock key={s.section_id} section={s} style={style} />
+          ))}
+        </main>
+      </div>
+    </div>
+  );
+}
+
 export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
   if (resume.template_id === "academic_photo") {
     return <AcademicPhotoSheet resume={resume} forPrint={forPrint} />;
+  }
+  if (resume.template_id === "swiss_grid") {
+    return <SwissGridSheet resume={resume} forPrint={forPrint} />;
+  }
+  if (resume.template_id === "executive_sidebar") {
+    return <ExecutiveSidebarSheet resume={resume} forPrint={forPrint} />;
   }
 
   const isATS = resume.template_id === "classic_ats";
@@ -537,7 +755,7 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
   const basicSection = resume.data.sections.find((s) => s.type === "basic_info");
   const basicVisible = basicSection?.visible ?? true;
   const info = resume.data.basic_info;
-  const contacts = contactItems(info);
+  const contacts = contactItems(info, resume.locale);
 
   const style: TStyle = isLatex
     ? { color: "#111111", isATS: true, variant: "latex", bullet: "disc", bulletStyle: resume.theme.bullet_style ?? "disc", skill: "text", showLocation: true, headerLayout: resume.theme.header_layout ?? "row" }
@@ -551,17 +769,18 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
   const bodySections = isCampus ? campusOrderedSections(rawBodySections) : rawBodySections;
   const campusRole = info.title || resume.target?.job_title || "";
 
+  const untitled = resume.locale === "en" ? "Untitled" : "未命名";
   const headerEl =
     basicVisible && (info.name || info.title || contacts.length > 0 || (isCampus && campusRole)) ? (
       isLatex ? (
         <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)] text-center">
-          <h1 className="text-[2.1em] font-bold leading-tight tracking-tight text-[#111]">{renderRich(info.name || "未命名")}</h1>
-          {info.title && <p className="mt-0.5 text-[0.98em] italic text-[#333]">{renderRich(info.title)}</p>}
-          <ContactBar contacts={contacts} className="mt-1.5 justify-center font-mono text-[0.8em] text-[#222]" />
+          <h1 className="text-[2.05em] font-bold leading-tight tracking-tight text-[#111]">{renderRich(info.name || untitled)}</h1>
+          {info.title && <p className="mt-0.5 text-[0.96em] italic text-[#333]">{renderRich(info.title)}</p>}
+          <ContactBar contacts={contacts} className="mt-1.5 justify-center text-[0.84em] text-[#222]" />
         </header>
       ) : isATS ? (
         <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)] text-center">
-          <h1 className="text-[2.1em] font-bold leading-tight tracking-wide">{renderRich(info.name || "未命名")}</h1>
+          <h1 className="text-[2.1em] font-bold leading-tight tracking-wide">{renderRich(info.name || untitled)}</h1>
           {info.title && <p className="mt-0.5 text-[1.05em] font-medium">{renderRich(info.title)}</p>}
           <ContactBar contacts={contacts} className="mt-2 justify-center text-[0.85em] text-[#333]" />
         </header>
@@ -570,7 +789,7 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="flex flex-wrap items-baseline gap-2.5">
               <h1 className="font-[700] leading-tight" style={{ fontSize: "1.95em", color: "#101817", letterSpacing: "-0.01em" }}>
-                {renderRich(info.name || "未命名")}
+                {renderRich(info.name || untitled)}
               </h1>
               {campusRole && (
                 <span
@@ -592,7 +811,7 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
           <div className="flex items-end justify-between gap-4">
             <div>
               <h1 className="font-[700] leading-tight" style={{ fontSize: "2.3em", color: "#101817", letterSpacing: "-0.01em" }}>
-                {renderRich(info.name || "未命名")}
+                {renderRich(info.name || untitled)}
               </h1>
               {info.title && (
                 <p className="mt-1 text-[1.1em] font-medium" style={{ color }}>
@@ -600,15 +819,17 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
                 </p>
               )}
             </div>
-            {/* 单栏模板不放照片，统一用姓名首字母色块保持右上角视觉锚点（头像仅学术双栏） */}
-            <div
-              className="mb-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: `linear-gradient(135deg, ${color}, ${color}bf)` }}
-            >
-              <span className="font-bold text-white" style={{ fontSize: "1.35em" }}>
-                {(stripHtml(info.name).replace(/\*\*/g, "") || "?").slice(0, 1)}
-              </span>
-            </div>
+            {/* 单栏中文模板保留右上角姓名首字色块锚点；英文版式省略中式印章色块，更契合国际审美 */}
+            {resume.locale !== "en" && (
+              <div
+                className="mb-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: `linear-gradient(135deg, ${color}, ${color}bf)` }}
+              >
+                <span className="font-bold text-white" style={{ fontSize: "1.35em" }}>
+                  {(stripHtml(info.name).replace(/\*\*/g, "") || "?").slice(0, 1)}
+                </span>
+              </div>
+            )}
           </div>
           <ContactBar contacts={contacts} className="mt-[var(--head-gap)] text-[0.85em] text-ink-500" />
         </header>

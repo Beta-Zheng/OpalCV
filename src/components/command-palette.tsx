@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { enterTransition, exitTransition, PresenceLayer } from "./motion-layer";
 import { cx } from "../lib/utils";
 import { useAppSlice } from "../lib/store";
+import { useT, useUiLang } from "../lib/i18n";
 import { emptyResume } from "../lib/parser";
 import { buildSampleResume } from "../lib/samples";
 import { IconClipboard, IconCpu, IconDatabase, IconFile, IconPlus, IconSearch, IconSpark } from "./icons";
@@ -31,7 +33,10 @@ type Cmd = {
 };
 
 export default function CommandPalette() {
+  const reducedMotion = useReducedMotion();
   const { resumes, view, go, createResume, toast } = useAppSlice("resumes", "view", "go", "createResume", "toast");
+  const uiLang = useUiLang();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -41,6 +46,7 @@ export default function CommandPalette() {
   /* 命令注册表：依赖 resumes / view 动态生成，全部来自真实 store */
   const allCommands = useMemo<Cmd[]>(() => {
     const cmds: Cmd[] = [];
+    const isEn = uiLang === "en";
 
     // 简历：打开（跳转编辑器）
     resumes.forEach((r) => {
@@ -48,11 +54,13 @@ export default function CommandPalette() {
       const isCurrent = view.name === "editor" && view.resumeId === r.id;
       cmds.push({
         id: `open-${r.id}`,
-        group: "简历",
-        label: `打开「${name}」`,
-        hint: isCurrent ? "当前正在编辑" : "进入编辑器",
+        group: isEn ? "Resumes" : "简历",
+        label: isEn ? `Open "${name}"` : `打开「${name}」`,
+        hint: isCurrent
+          ? isEn ? "Currently editing" : "当前正在编辑"
+          : isEn ? "Open in editor" : "进入编辑器",
         icon: <IconFile size={15} />,
-        keywords: `${name} 简历 编辑 打开`,
+        keywords: `${name} 简历 编辑 打开 resume edit open`,
         run: () => go({ name: "editor", resumeId: r.id }),
       });
     });
@@ -60,28 +68,34 @@ export default function CommandPalette() {
     // 创建：空白 / 示例（立即创建并进入编辑器）
     cmds.push({
       id: "create-blank",
-      group: "创建",
-      label: "新建空白简历",
-      hint: "创建后直接进入编辑",
+      group: isEn ? "Create" : "创建",
+      label: isEn ? "New Blank Resume" : "新建空白简历",
+      hint: isEn ? "Create and open in editor" : "创建后直接进入编辑",
       icon: <IconPlus size={15} />,
-      keywords: "新建 空白 创建 简历",
+      keywords: "新建 空白 创建 简历 new blank create resume",
       run: () => {
-        const id = createResume(emptyResume(), "未命名简历");
-        toast("ok", "已创建空白简历");
+        const id = createResume(emptyResume(), isEn ? "Untitled Resume" : "未命名简历", {
+          locale: isEn ? "en" : "zh",
+        });
+        toast("ok", isEn ? "Blank resume created" : "已创建空白简历");
         go({ name: "editor", resumeId: id });
       },
     });
     cmds.push({
       id: "create-sample",
-      group: "创建",
-      label: "载入示例简历",
-      hint: "含完整模块，可随意修改",
+      group: isEn ? "Create" : "创建",
+      label: isEn ? "Load Sample Resume" : "载入示例简历",
+      hint: isEn ? "Complete sample with editable sections" : "含完整模块，可随意修改",
       icon: <IconSpark size={15} />,
-      keywords: "示例 样例 演示 载入 简历",
+      keywords: "示例 样例 演示 载入 简历 sample demo load",
       run: () => {
-        const data = buildSampleResume();
-        const id = createResume(data, `${data.basic_info.name}（示例）`);
-        toast("ok", "已载入示例简历");
+        const data = buildSampleResume(isEn ? "en_google_ml" : undefined);
+        const id = createResume(
+          data,
+          isEn ? `${data.basic_info.name} (Sample)` : `${data.basic_info.name}（示例）`,
+          { locale: isEn ? "en" : "zh" }
+        );
+        toast("ok", isEn ? "Sample resume loaded" : "已载入示例简历");
         go({ name: "editor", resumeId: id });
       },
     });
@@ -89,34 +103,34 @@ export default function CommandPalette() {
     // 页面：切换
     cmds.push({
       id: "nav-home",
-      group: "页面",
-      label: "工作台",
-      hint: "查看全部简历",
+      group: isEn ? "Pages" : "页面",
+      label: isEn ? "Workspace" : "工作台",
+      hint: isEn ? "View all resumes" : "查看全部简历",
       icon: <IconClipboard size={15} />,
-      keywords: "工作台 首页 home 简历列表",
+      keywords: "工作台 首页 home workspace resumes",
       run: () => go({ name: "home" }),
     });
     cmds.push({
       id: "nav-models",
-      group: "页面",
-      label: "模型与隐私",
-      hint: "管理模型与外部调用",
+      group: isEn ? "Pages" : "页面",
+      label: isEn ? "Models & Privacy" : "模型与隐私",
+      hint: isEn ? "Manage AI providers & external routing" : "管理模型与外部调用",
       icon: <IconCpu size={15} />,
-      keywords: "模型 隐私 外部 模型配置",
+      keywords: "模型 隐私 外部 模型配置 models privacy ai",
       run: () => go({ name: "models" }),
     });
     cmds.push({
       id: "nav-settings",
-      group: "页面",
-      label: "数据管理",
-      hint: "导入 / 导出 / 清空",
+      group: isEn ? "Pages" : "页面",
+      label: isEn ? "Settings & Data" : "数据管理",
+      hint: isEn ? "Import / Export / Reset" : "导入 / 导出 / 清空",
       icon: <IconDatabase size={15} />,
-      keywords: "数据 设置 导入 导出 备份 清空",
+      keywords: "数据 设置 导入 导出 备份 清空 settings data backup",
       run: () => go({ name: "settings" }),
     });
 
     return cmds;
-  }, [resumes, view, go, createResume, toast]);
+  }, [resumes, view, go, createResume, toast, uiLang]);
 
   /* 过滤：对 label / keywords 做不区分大小写的子串匹配 */
   const filtered = useMemo(() => {
@@ -141,7 +155,12 @@ export default function CommandPalette() {
     if (!open) return;
     setQuery("");
     setActive(0);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    const previous = document.activeElement as HTMLElement | null;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      if (previous?.isConnected) previous.focus();
+    };
   }, [open]);
 
   /* 全局快捷键：Ctrl/Cmd+K 唤起、Esc 关闭 */
@@ -174,8 +193,6 @@ export default function CommandPalette() {
     el?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
-  if (!open) return null;
-
   const run = (c: Cmd) => {
     setOpen(false);
     c.run();
@@ -196,11 +213,14 @@ export default function CommandPalette() {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[16vh]">
-      <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-[2px]" onClick={() => setOpen(false)} />
+    <AnimatePresence>
+    {open && <PresenceLayer key="command-palette" className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[16vh]">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="absolute inset-0 bg-ink-950/40 backdrop-blur-[2px]" onClick={() => setOpen(false)} />
       <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] } }}
+        data-command-surface
+        initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.98, y: reducedMotion ? 0 : -6 }}
+        animate={{ opacity: 1, scale: 1, y: 0, transition: enterTransition }}
+        exit={{ scale: reducedMotion ? 1 : 0.99, y: reducedMotion ? 0 : -4, transition: exitTransition }}
         className="relative w-full max-w-lg overflow-hidden rounded-xl bg-paper-25 shadow-2xl shadow-ink-950/30 ring-1 ring-ink-900/10"
       >
         {/* 搜索输入行 */}
@@ -214,17 +234,19 @@ export default function CommandPalette() {
               setActive(0);
             }}
             onKeyDown={onListKeyDown}
-            placeholder="搜索命令…（↑↓ 选择 · 回车执行 · Esc 关闭）"
+            placeholder={t("搜索命令…（↑↓ 选择 · 回车执行 · Esc 关闭）", "Search commands… (↑↓ select · Enter run · Esc close)")}
             className="w-full bg-transparent text-[14px] text-ink-900 placeholder:text-ink-400 focus:outline-none"
-            aria-label="搜索命令"
+            aria-label={t("搜索命令", "Search commands")}
           />
-          <kbd className="shrink-0 rounded-md border border-ink-200 bg-paper-200 px-1.5 py-0.5 font-mono text-[10px] text-ink-500">Esc</kbd>
+          <kbd className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-500">Esc</kbd>
         </div>
 
         {/* 命令列表 */}
         <div ref={listRef} className="max-h-[46vh] overflow-y-auto p-1.5">
           {filtered.length === 0 ? (
-            <p className="px-4 py-8 text-center text-[13px] text-ink-400">没有匹配的命令</p>
+            <p className="px-4 py-8 text-center text-[13px] text-ink-400">
+              {t("没有匹配的命令", "No matching commands")}
+            </p>
           ) : (
             groups.map(([group, cmds]) => (
               <div key={group} className="mb-1">
@@ -243,12 +265,12 @@ export default function CommandPalette() {
                         isActive ? "bg-brand-50" : "hover:bg-ink-900/5"
                       )}
                     >
-                      <span className={cx("flex h-7 w-7 shrink-0 items-center justify-center rounded-md", isActive ? "bg-brand-100 text-brand-700" : "bg-paper-200 text-ink-500")}>{c.icon}</span>
+                      <span className={cx("flex h-7 w-7 shrink-0 items-center justify-center rounded-md", isActive ? "bg-brand-100 text-brand-700" : "bg-subtle text-ink-500")}>{c.icon}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-medium text-ink-900">{c.label}</span>
                         {c.hint && <span className={cx("block truncate text-[11px]", isActive ? "text-brand-600" : "text-ink-400")}>{c.hint}</span>}
                       </span>
-                      {isActive && <kbd className="shrink-0 rounded-md border border-brand-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-brand-600">↵</kbd>}
+                      {isActive && <kbd className="shrink-0 rounded-md bg-surface px-1.5 py-0.5 font-mono text-[10px] text-brand-600">↵</kbd>}
                     </button>
                   );
                 })}
@@ -263,6 +285,7 @@ export default function CommandPalette() {
           <p className="text-[10.5px] text-ink-400">导出 PDF、JD 匹配请进入对应简历的编辑器操作</p>
         </div>
       </motion.div>
-    </div>
+    </PresenceLayer>}
+    </AnimatePresence>
   );
 }

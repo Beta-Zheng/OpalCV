@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cx, downloadText, fmtDateCompact, nowISO } from "../lib/utils";
 import { useAppSlice } from "../lib/store";
+import { useT } from "../lib/i18n";
 import {
   createBackup,
   createResumeBackup,
@@ -13,7 +14,7 @@ import {
   uploadBackupToGist,
   uploadBackupToWebDav,
 } from "../lib/sync";
-import { Btn, Confirm, Toggle, Modal, ModalHeader } from "../components/ui";
+import { Btn, Confirm, GlassSelect, InfoTip, Toggle, Modal, ModalHeader } from "../components/ui";
 import {
   IconAlert,
   IconCheck,
@@ -45,6 +46,7 @@ export default function Settings() {
     "coverLetters"
   );
   const { resumes, jds, suggestions, models, privacy, setPrivacy } = app;
+  const t = useT();
   const [clearArmed, setClearArmed] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
@@ -54,17 +56,56 @@ export default function Settings() {
   } | null>(null);
   const [restoreMode, setRestoreMode] = useState<"merge" | "replace">("merge");
   const [singleId, setSingleId] = useState("");
-  const [syncTarget, setSyncTarget] = useState<"webdav" | "gist">("webdav");
+  const SYNC_CONFIG_KEY = "touchstonecv-sync-config";
+  const initialSyncConfig = (() => {
+    try {
+      const raw = localStorage.getItem(SYNC_CONFIG_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<{
+        syncTarget: "webdav" | "gist";
+        webdavUrl: string;
+        webdavUser: string;
+        gistId: string;
+        gistFilename: string;
+      }>;
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  })();
+  const [syncTarget, setSyncTarget] = useState<"webdav" | "gist">(
+    initialSyncConfig?.syncTarget === "gist" ? "gist" : "webdav"
+  );
   const [syncPassphrase, setSyncPassphrase] = useState("");
   const [showSyncPassphrase, setShowSyncPassphrase] = useState(false);
-  const [webdavUrl, setWebdavUrl] = useState("");
-  const [webdavUser, setWebdavUser] = useState("");
+  const [webdavUrl, setWebdavUrl] = useState(
+    initialSyncConfig?.webdavUrl ?? ""
+  );
+  const [webdavUser, setWebdavUser] = useState(
+    initialSyncConfig?.webdavUser ?? ""
+  );
   const [webdavPass, setWebdavPass] = useState("");
   const [gistToken, setGistToken] = useState("");
-  const [gistId, setGistId] = useState("");
+  const [gistId, setGistId] = useState(initialSyncConfig?.gistId ?? "");
   const [gistFilename, setGistFilename] = useState(
-    "touchstone-cv-backup.enc.json"
+    initialSyncConfig?.gistFilename || "touchstone-cv-backup.enc.json"
   );
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SYNC_CONFIG_KEY,
+        JSON.stringify({
+          syncTarget,
+          webdavUrl,
+          webdavUser,
+          gistId,
+          gistFilename,
+        })
+      );
+    } catch {
+      // ignore storage quota / privacy mode errors
+    }
+  }, [syncTarget, webdavUrl, webdavUser, gistId, gistFilename]);
   const [syncBusy, setSyncBusy] = useState<null | "upload" | "download">(null);
   const [syncStatus, setSyncStatus] = useState<{
     ok: boolean;
@@ -208,225 +249,188 @@ export default function Settings() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-12 pt-7 sm:px-6">
-      <header className="anim-fade-up">
-        <h1 className="text-[28px] font-semibold tracking-tight text-ink-900">
-          数据管理
-        </h1>
+      <header className="anim-fade-up flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-[28px] font-bold tracking-tight text-ink-900">
+            {t("数据管理", "Data Management")}
+          </h1>
+          <InfoTip
+            align="left"
+            label={t("本地存储与隐私说明", "Local storage & privacy")}
+            content={t(
+              `所有简历与配置均保存在当前浏览器 IndexedDB（约 ${storageKB} KB）。默认不上传任何数据、不发送遥测；清理浏览器缓存会移除数据，建议定期下载备份。`,
+              `All resumes and settings are stored locally in browser IndexedDB (~${storageKB} KB). Zero telemetry or auto-uploads. Back up periodically before clearing browser storage.`
+            )}
+          />
+        </div>
+        <span className="chip rounded-full bg-subtle px-3 py-1 font-mono text-[12px] text-ink-600">
+          {storageKB} KB{storageEstimate?.usage ? ` · ${t("站点", "Origin")} ${(storageEstimate.usage / 1024 / 1024).toFixed(1)} MB` : ""}
+        </span>
       </header>
 
       {app.saveStatus === "error" && (
         <p
           role="alert"
-          className="rounded-xl bg-danger-100 p-3 text-[12px] text-danger-700"
+          className="rounded-2xl bg-danger-100 p-3.5 text-[12px] text-danger-700"
         >
-          本机数据读取或保存失败。请先保管已有备份并检查浏览器存储空间；若本机数据损坏，请从有效备份恢复，原存储内容会保留至明确恢复或清空。
+          {t("本机数据读取或保存失败，请先保管已有备份并检查浏览器存储空间。", "Local read/write failed. Keep your backup safe and check browser storage quota.")}
         </p>
       )}
 
-      <div className="grid items-start gap-4 md:grid-cols-[1.2fr_1fr]">
-        {/* 数据概览 */}
-        <section
-          className="anim-fade-up rounded-2xl border border-ink-200 bg-paper-25 p-5"
-          style={{ animationDelay: "0.05s" }}
-        >
-          <h2 className="flex items-center gap-2 text-[15px] font-bold text-ink-900">
-            <IconDatabase size={16} className="text-brand-600" /> 本地数据概览
-          </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
-            {[
-              ["简历", resumes.length, "份"],
-              ["JD", Object.keys(jds).length, "份"],
-              ["AI 建议记录", suggestions.length, "条"],
-              ["模型配置", models.length, "个"],
-            ].map(([label, n, unit]) => (
-              <div
-                key={String(label)}
-                className="rounded-xl border border-ink-100 bg-white px-3.5 py-3"
-              >
-                <p className="text-[22px] font-semibold leading-none tabular-nums text-ink-900">
-                  {n}
-                  <span className="ml-1 text-[12px] font-medium text-ink-500">
-                    {unit}
-                  </span>
-                </p>
-                <p className="mt-1.5 text-[12px] text-ink-400">{label}</p>
-              </div>
-            ))}
+      {/* 顶部 4 列等高粉彩概览条 */}
+      <section aria-label={t("本地数据概览", "Local storage overview")} className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+        {[
+          [t("简历", "Resumes"), resumes.length, t("份", ""), "pastel-violet"],
+          ["JD", Object.keys(jds).length, t("份", ""), "pastel-indigo"],
+          [t("AI 建议", "AI Suggestions"), suggestions.length, t("条", ""), "pastel-mint"],
+          [t("模型配置", "Models"), models.length, t("个", ""), "pastel-amber"],
+        ].map(([label, n, unit, bg]) => (
+          <div key={String(label)} className={`rounded-[22px] px-5 py-4 ${bg}`}>
+            <p className="text-[12.5px] font-medium text-ink-500">{label}</p>
+            <p className="mt-1.5 text-[26px] font-bold leading-none tabular-nums text-ink-900">
+              {n}
+              {unit && (
+                <span className="ml-1 text-[12px] font-medium text-ink-500">
+                  {unit}
+                </span>
+              )}
+            </p>
           </div>
-          <p className="mt-3 flex items-center justify-between rounded-lg bg-paper-100 px-3 py-2 font-mono text-[12px] text-ink-500">
-            <span>数据体积估算</span>
-            <span className="font-bold text-ink-800">{storageKB} KB</span>
-          </p>
-          <details className="mt-3 text-[12px] text-ink-500">
-            <summary className="cursor-pointer">存储与密钥说明</summary>
-            <pre className="mt-3 overflow-x-auto rounded-lg bg-paper-100 p-3 font-mono text-[12px] leading-relaxed text-ink-600">
-              {`本机 IndexedDB
-├── 简历与快照：共享未改动条目
-├── 图片与导入原文：独立去重存储
-└── 模型配置、投递记录与隐私设置
+        ))}
+      </section>
 
-旧 localStorage 数据校验并迁移成功后才移除。
-备份不含 API Key；本机密钥未加密。`}
-            </pre>
-            {storageEstimate && (
-              <p className="mt-2 text-[12px] text-ink-500">
-                站点实际占用约{" "}
-                {((storageEstimate.usage ?? 0) / 1024 / 1024).toFixed(1)}{" "}
-                MB，浏览器报告配额约{" "}
-                {((storageEstimate.quota ?? 0) / 1024 / 1024).toFixed(0)}{" "}
-                MB（含本网站缓存，配额不保证可全部使用）。
-              </p>
-            )}
-          </details>
-          <p className="mt-3 text-[12px] text-ink-500">
-            清理浏览器数据会删除简历，请定期备份。
-          </p>
+      {/* 中部 2 列等高核心功能卡 */}
+      <div className="grid items-stretch gap-4 md:grid-cols-2">
+        {/* 备份与恢复 */}
+        <section className="soft-panel flex flex-col justify-between gap-4 rounded-[24px] p-5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <IconDatabase size={16} className="text-brand-600" />
+              <h2 className="text-[15px] font-bold text-ink-900">{t("备份与恢复", "Backup & Restore")}</h2>
+              <InfoTip
+                content={t(
+                  "备份 JSON 包含全部简历、快照与投递记录（不含 API Key），恢复时可选择合并或替换。",
+                  "Backup JSON includes all resumes, snapshots, and applications (excluding API keys). Choose merge or replace on restore."
+                )}
+              />
+            </div>
+            <span className="text-[12px] text-ink-400">
+              {lastBackup ? `${t("已备份", "Backed up")} ${new Date(lastBackup).toLocaleDateString()}` : t("未备份", "Not backed up")}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-2.5">
+            <Btn variant="primary" className="flex-1" onClick={backup}>
+              <IconDownload size={14} /> {t("下载完整备份", "Download Full Backup")}
+            </Btn>
+            <Btn
+              variant="outline"
+              className="flex-1"
+              onClick={() => importRef.current?.click()}
+            >
+              <IconUpload size={14} /> {t("从备份恢复", "Restore Backup")}
+            </Btn>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onImport(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <GlassSelect
+              ariaLabel={t("选择单份备份简历", "Select single resume")}
+              className="min-w-0 flex-1"
+              placeholder={t("选择单份简历…", "Choose a resume…")}
+              value={singleId}
+              onChange={setSingleId}
+              options={resumes.map((r) => ({ value: r.id, label: r.title }))}
+            />
+            <Btn
+              size="sm"
+              disabled={!singleId}
+              onClick={() =>
+                downloadText(
+                  `resume-${singleId}.json`,
+                  JSON.stringify(createResumeBackup(app, singleId), null, 2)
+                )
+              }
+            >
+              {t("单份导出", "Export One")}
+            </Btn>
+          </div>
         </section>
 
-        {/* 隐私与备份 */}
-        <section
-          className="anim-fade-up flex flex-col gap-3"
-          style={{ animationDelay: "0.1s" }}
-        >
-          <div className="rounded-xl border border-line bg-surface p-5 text-ink-800">
-            <h2 className="flex items-center gap-2 text-[15px] font-bold">
-              <IconLock size={16} className="text-ink-500" /> 数据隐私
-            </h2>
-            <details className="mt-3 text-[12px] text-ink-500">
-              <summary className="cursor-pointer">查看隐私说明</summary>
-              <ul className="mt-3 flex flex-col gap-2">
-                {[
-                  "默认不上传任何数据",
-                  "默认不发送遥测",
-                  "默认不请求外部服务",
-                  "外部模型必须显式开启并逐次提示",
-                  "日志不记录完整 API Key 与简历全文",
-                ].map((t) => (
-                  <li
-                    key={t}
-                    className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-600"
-                  >
-                    <IconCheck
-                      size={13}
-                      className="mt-0.5 shrink-0 text-ink-500"
-                    />{" "}
-                    {t}
-                  </li>
-                ))}
-              </ul>
-            </details>
-            <p className="mt-3 text-[12px] text-ink-500">
-              外部模型发送内容前逐次确认。
-            </p>
-            <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
-              <span className="flex items-center gap-2 text-[12px] font-medium">
-                <IconShield
-                  size={14}
-                  className={
-                    privacy.allowExternal ? "text-seal-600" : "text-ink-500"
-                  }
-                />
-                允许外部模型
-              </span>
-              <Toggle
-                checked={privacy.allowExternal}
-                onChange={(v) => {
-                  setPrivacy({ allowExternal: v });
-                  app.toast(
-                    v ? "warn" : "ok",
-                    v ? "外部模型已开启" : "外部模型已关闭"
-                  );
-                }}
-                label="允许外部模型"
-              />
-            </div>
+        {/* 数据隐私与安全开关 */}
+        <section className="soft-panel flex flex-col justify-between gap-4 rounded-[24px] p-5">
+          <div className="flex items-center gap-2">
+            <IconLock size={16} className="text-brand-600" />
+            <h2 className="text-[15px] font-bold text-ink-900">{t("数据隐私", "Privacy")}</h2>
+            <InfoTip
+              content={t(
+                "默认不上传任何数据、不发送遥测、不请求外部服务；开启外部模型后每次外发仍需确认。",
+                "No uploads, telemetry, or external calls by default. External AI calls still ask for confirmation when enabled."
+              )}
+            />
           </div>
 
-          {/* 备份恢复 */}
-          <div className="flex-1 rounded-2xl border border-ink-200 bg-paper-25 p-5">
-            <h2 className="text-[15px] font-bold text-ink-900">备份与恢复</h2>
-            <p className="mt-2 text-[12px] text-ink-500">
-              备份不含密钥，恢复时可选择合并或替换。
-            </p>
-            <div className="mt-3.5 flex flex-col gap-2">
-              <Btn variant="dark" className="h-9" onClick={backup}>
-                <IconDownload size={14} /> 下载备份 JSON
-              </Btn>
-              <Btn
-                variant="outline"
-                className="h-9"
-                onClick={() => importRef.current?.click()}
-              >
-                <IconUpload size={14} /> 从备份恢复
-              </Btn>
-              <input
-                ref={importRef}
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onImport(f);
-                  e.target.value = "";
-                }}
+          <div className="flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
+            <span className="flex items-center gap-2 text-[13.5px] font-medium text-ink-800">
+              <IconShield
+                size={15}
+                className={privacy.allowExternal ? "text-seal-600" : "text-brand-600"}
               />
-              <p className="text-[12px] text-ink-400">
-                {lastBackup
-                  ? `上次备份下载准备：${new Date(lastBackup).toLocaleString()}`
-                  : "尚未下载全量备份"}
-              </p>
-              <div className="mt-2 flex gap-2">
-                <select data-ui-select
-                  aria-label="选择单份备份简历"
-                  className="field-input min-w-0 flex-1"
-                  value={singleId}
-                  onChange={(e) => setSingleId(e.target.value)}
-                >
-                  <option value="">选择简历</option>
-                  {resumes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.title}
-                    </option>
-                  ))}
-                </select>
-                <Btn
-                  disabled={!singleId}
-                  onClick={() =>
-                    downloadText(
-                      `resume-${singleId}.json`,
-                      JSON.stringify(createResumeBackup(app, singleId), null, 2)
-                    )
-                  }
-                >
-                  单份备份
-                </Btn>
-              </div>
-            </div>
+              {t("允许外部模型", "Allow External Models")}
+            </span>
+            <Toggle
+              checked={privacy.allowExternal}
+              onChange={(v) => {
+                setPrivacy({ allowExternal: v });
+                app.toast(
+                  v ? "warn" : "ok",
+                  v ? t("外部模型已开启", "External models enabled") : t("外部模型已关闭", "External models disabled")
+                );
+              }}
+              label={t("允许外部模型", "Allow External Models")}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[12px] text-ink-500">
+            <span>{t("本地隐私模式 · 零遥测", "Local-first · Zero telemetry")}</span>
+            <span className="font-mono text-ink-400">IndexedDB</span>
           </div>
         </section>
       </div>
 
       {/* 加密云端同步 */}
       <section
-        className="anim-fade-up rounded-2xl border border-ink-200 bg-paper-25 p-5"
+        className="soft-panel anim-fade-up rounded-[24px] p-5"
         style={{ animationDelay: "0.12s" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-[15px] font-bold text-ink-900">
-              <IconRefresh size={16} className="text-brand-600" />{" "}
-              加密云端同步（WebDAV / GitHub Gist）
+          <div className="flex items-center gap-2">
+            <IconRefresh size={16} className="text-brand-600" />
+            <h2 className="text-[15px] font-bold text-ink-900">
+              {t("加密云端同步", "Encrypted Cloud Sync")}
             </h2>
-            <p className="mt-1 text-[12px] text-ink-500">
-              上传前在本地使用 AES-GCM 加密整个备份 JSON；同步 Token、WebDAV
-              密码与加密口令仅驻留内存，绝不写入备份文件或浏览器持久存储。
-            </p>
+            <InfoTip
+              content={t(
+                "上传前在本地使用 AES-GCM 加密完整备份 JSON；Token、密码与加密口令仅驻留内存，绝不写入磁盘。",
+                "Encrypts the full backup JSON locally with AES-GCM before upload. Tokens and passphrases stay in memory only."
+              )}
+            />
           </div>
-          <div className="flex rounded-lg bg-paper-200 p-0.5">
+          <div className="liquid-glass relative flex rounded-full p-1">
             {(
               [
                 ["webdav", "WebDAV"],
-                ["gist", "GitHub 私有 Gist"],
+                ["gist", "GitHub Gist"],
               ] as const
             ).map(([k, label]) => (
               <button
@@ -437,10 +441,10 @@ export default function Settings() {
                   setSyncStatus(null);
                 }}
                 className={cx(
-                  "rounded-md px-3 py-1.5 text-[12px] font-bold transition",
+                  "rounded-full px-3.5 py-1 text-[12px] transition-all",
                   syncTarget === k
-                    ? "bg-white text-ink-900 shadow-sm"
-                    : "text-ink-500 hover:text-ink-700"
+                    ? "glass-lens font-semibold"
+                    : "text-ink-500 hover:text-ink-900"
                 )}
               >
                 {label}
@@ -449,22 +453,22 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="mt-4 grid gap-3.5 md:grid-cols-2">
           <label className="block md:col-span-2">
-            <span className="field-label">同步加密密码（Passphrase）</span>
-            <div className="relative">
+            <span className="field-label">{t("同步加密口令", "Sync Passphrase")}</span>
+            <div className="liquid-input relative flex items-center rounded-full px-4 py-2">
               <input
                 type={showSyncPassphrase ? "text" : "password"}
-                className="field-input pr-8 font-mono"
+                className="w-full bg-transparent pr-7 font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
                 value={syncPassphrase}
                 onChange={(e) => setSyncPassphrase(e.target.value)}
-                placeholder="用于加密上传与解密恢复的口令（不会存入备份）"
+                placeholder={t("输入加密上传与解密恢复口令…", "Enter passphrase for AES-GCM encryption…")}
               />
               <button
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-500 hover:text-ink-700"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
                 onClick={() => setShowSyncPassphrase((v) => !v)}
-                aria-label="显示/隐藏同步密码"
+                aria-label={t("显示/隐藏同步密码", "Show or hide passphrase")}
               >
                 {showSyncPassphrase ? (
                   <IconEyeOff size={14} />
@@ -478,70 +482,66 @@ export default function Settings() {
           {syncTarget === "webdav" ? (
             <>
               <label className="block md:col-span-2">
-                <span className="field-label">WebDAV 文件 URL</span>
+                <span className="field-label">WebDAV URL</span>
                 <input
                   type="url"
-                  className="field-input font-mono"
+                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
                   value={webdavUrl}
                   onChange={(e) => setWebdavUrl(e.target.value)}
-                  placeholder="https://dav.example.com/backups/touchstone-cv.enc.json"
+                  placeholder="https://dav.example.com/backups/opalcv.enc.json"
                 />
               </label>
               <label className="block">
-                <span className="field-label">用户名（可选）</span>
+                <span className="field-label">{t("用户名（可选）", "Username (optional)")}</span>
                 <input
                   type="text"
-                  className="field-input"
+                  className="liquid-input w-full rounded-full px-4 py-2 text-[13px] text-ink-900 placeholder:text-ink-400"
                   value={webdavUser}
                   onChange={(e) => setWebdavUser(e.target.value)}
-                  placeholder="WebDAV 用户名"
+                  placeholder={t("WebDAV 用户名", "WebDAV username")}
                 />
               </label>
               <label className="block">
-                <span className="field-label">密码 / 应用密码（可选）</span>
+                <span className="field-label">{t("密码（可选）", "Password (optional)")}</span>
                 <input
                   type="password"
-                  className="field-input font-mono"
+                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
                   value={webdavPass}
                   onChange={(e) => setWebdavPass(e.target.value)}
-                  placeholder="WebDAV 密码"
+                  placeholder={t("WebDAV 密码", "WebDAV password")}
                 />
               </label>
             </>
           ) : (
             <>
               <label className="block md:col-span-2">
-                <span className="field-label">
-                  GitHub Personal Access Token（需 gist 权限）
-                </span>
+                <span className="field-label">{t("GitHub Token（gist 权限）", "GitHub Token (gist scope)")}</span>
                 <input
                   type="password"
-                  className="field-input font-mono"
+                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
                   value={gistToken}
                   onChange={(e) => setGistToken(e.target.value)}
-                  placeholder="ghp_… 或 github_pat_…"
+                  placeholder="ghp_… / github_pat_…"
                 />
               </label>
               <label className="block">
-                <span className="field-label">
-                  Gist ID（上传时留空将自动新建私有 Gist）
-                </span>
+                <span className="field-label">{t("Gist ID（留空自动新建）", "Gist ID (blank to create)")}</span>
                 <input
                   type="text"
-                  className="field-input font-mono"
+                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
                   value={gistId}
                   onChange={(e) => setGistId(e.target.value)}
-                  placeholder="例如 a1b2c3d4e5f6…"
+                  placeholder="a1b2c3d4e5f6…"
                 />
               </label>
               <label className="block">
-                <span className="field-label">Gist 文件名</span>
+                <span className="field-label">{t("Gist 文件名", "Gist Filename")}</span>
                 <input
                   type="text"
-                  className="field-input font-mono"
+                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
                   value={gistFilename}
                   onChange={(e) => setGistFilename(e.target.value)}
-                  placeholder="touchstone-cv-backup.enc.json"
+                  placeholder="opalcv-backup.enc.json"
                 />
               </label>
             </>
@@ -569,77 +569,81 @@ export default function Settings() {
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Btn
-            variant="dark"
-            className="h-9"
+            variant="primary"
+            size="sm"
             disabled={syncBusy !== null}
             onClick={() => void handleSyncUpload()}
           >
             <IconUpload size={14} />{" "}
             {syncBusy === "upload"
-              ? "加密上传中…"
+              ? t("加密上传中…", "Encrypting & uploading…")
               : syncTarget === "webdav"
-              ? "加密上传到 WebDAV"
-              : "加密上传到私有 Gist"}
+              ? t("加密上传到 WebDAV", "Encrypt & Upload to WebDAV")
+              : t("加密上传到私有 Gist", "Encrypt & Upload to Private Gist")}
           </Btn>
           <Btn
             variant="outline"
-            className="h-9"
+            size="sm"
             disabled={syncBusy !== null}
             onClick={() => void handleSyncDownload()}
           >
             <IconDownload size={14} />{" "}
             {syncBusy === "download"
-              ? "下载解密中…"
+              ? t("下载解密中…", "Downloading & decrypting…")
               : syncTarget === "webdav"
-              ? "从 WebDAV 下载并恢复"
-              : "从 Gist 下载并恢复"}
+              ? t("从 WebDAV 恢复", "Restore from WebDAV")
+              : t("从 Gist 恢复", "Restore from Gist")}
           </Btn>
         </div>
       </section>
 
-      {/* 危险区 */}
+      {/* 危险区（无硬框浅红柔块） */}
       <section
-        className="anim-fade-up rounded-2xl border border-danger-600/25 bg-danger-100/40 p-5"
+        className="anim-fade-up rounded-[24px] bg-danger-100/45 p-5"
         style={{ animationDelay: "0.15s" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger-100 text-danger-600">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-danger-100 text-danger-600">
               <IconAlert size={18} />
             </span>
-            <div>
+            <div className="flex items-center gap-2">
               <h2 className="text-[15px] font-bold text-danger-700">
-                清空全部数据
+                {t("清空全部数据", "Clear All Data")}
               </h2>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-ink-500">
-                删除本机全部简历、JD、AI
-                建议记录，并将模型配置恢复为默认。该操作不可撤销，建议先下载备份。
-              </p>
+              <InfoTip
+                align="left"
+                content={t(
+                  "删除本机全部简历、JD、AI 建议记录，并将模型配置恢复为默认。操作不可撤销，建议先下载备份。",
+                  "Deletes all local resumes, JDs, and AI suggestions and resets model configs to defaults. Irreversible — download a backup first."
+                )}
+              />
             </div>
           </div>
           {!clearArmed ? (
             <Btn
               variant="danger"
-              className="h-9"
+              size="sm"
               onClick={() => setClearArmed(true)}
             >
-              <IconTrash size={14} /> 清空全部数据
+              <IconTrash size={14} /> {t("清空全部数据", "Clear All Data")}
             </Btn>
           ) : (
             <div className="flex items-center gap-2">
               <Btn
                 variant="ghost"
-                className="h-9"
+                size="sm"
                 onClick={() => setClearArmed(false)}
               >
-                取消
+                {t("取消", "Cancel")}
               </Btn>
               <Btn
                 variant="danger"
-                className="h-9 font-bold"
+                size="sm"
+                className="font-bold"
                 onClick={() => setConfirmClear(true)}
               >
-                <IconTrash size={14} /> 确认清空（二次确认）
+                <IconTrash size={14} /> {t("确认清空", "Confirm Clear")}
               </Btn>
             </div>
           )}
@@ -649,69 +653,72 @@ export default function Settings() {
       <Confirm
         open={confirmClear}
         danger
-        title="确定清空全部数据？"
-        desc={`将删除 ${resumes.length} 份简历、${
-          suggestions.length
-        } 条 AI 建议记录、${
-          Object.keys(jds).length
-        } 份 JD，模型配置恢复默认。此操作不可撤销。`}
-        confirmText="永久删除"
+        title={t("确定清空全部数据？", "Clear all local data?")}
+        desc={t(
+          `将删除 ${resumes.length} 份简历、${suggestions.length} 条 AI 建议记录、${Object.keys(jds).length} 份 JD，模型配置恢复默认。此操作不可撤销。`,
+          `This permanently deletes ${resumes.length} resumes, ${suggestions.length} AI suggestions, and ${Object.keys(jds).length} JDs, and resets model settings.`
+        )}
+        confirmText={t("永久删除", "Delete Permanently")}
         onConfirm={() => {
           app.clearAll();
           setConfirmClear(false);
           setClearArmed(false);
-          app.toast("ok", "全部数据已清空");
+          app.toast("ok", t("全部数据已清空", "All local data cleared"));
         }}
         onCancel={() => setConfirmClear(false)}
       />
       <Modal open={!!restoring} onClose={() => setRestoring(null)}>
         <ModalHeader
-          title="预览备份内容"
-          sub="确认恢复方式后才写入本机"
+          title={t("预览备份内容", "Preview Backup")}
+          sub={t("确认恢复方式后才写入本机", "Choose how to restore before writing to this device")}
           onClose={() => setRestoring(null)}
         />
         <div className="px-5 pb-5">
           {restoring && (
             <>
               <p className="text-[13px]">
-                {restoring.data.resumes.length} 份简历 ·{" "}
-                {restoring.data.snapshots?.length ?? 0} 份快照 ·{" "}
-                {restoring.data.applications?.length ?? 0} 条投递记录
+                {restoring.data.resumes.length} {t("份简历", "resumes")} ·{" "}
+                {restoring.data.snapshots?.length ?? 0} {t("份快照", "snapshots")} ·{" "}
+                {restoring.data.applications?.length ?? 0} {t("条投递记录", "applications")}
               </p>
               <ul className="my-3 max-h-40 overflow-auto text-[12px] text-ink-500">
                 {restoring.data.resumes.map((r) => (
                   <li key={r.id}>{r.title}</li>
                 ))}
               </ul>
-              <label className="block text-[12px]">
-                恢复方式
-                <select data-ui-select
-                  className="field-input mt-1"
+              <div className="block text-[12px] text-ink-500">
+                <span className="mb-1.5 block font-medium">{t("恢复方式", "Restore Mode")}</span>
+                <GlassSelect
+                  ariaLabel={t("恢复方式", "Restore mode")}
+                  className="w-full"
                   value={restoreMode}
-                  onChange={(e) =>
-                    setRestoreMode(e.target.value as typeof restoreMode)
-                  }
-                >
-                  <option value="merge">
-                    合并：保留当前数据，为导入简历分配新 ID
-                  </option>
-                  <option value="replace">覆盖：替换所有当前简历与配置</option>
-                </select>
-              </label>
+                  onChange={(v) => setRestoreMode(v as typeof restoreMode)}
+                  options={[
+                    { value: "merge", label: t("合并：保留当前数据，分配新 ID", "Merge: keep existing data") },
+                    { value: "replace", label: t("覆盖：替换所有当前简历与配置", "Replace: overwrite all local data") },
+                  ]}
+                />
+              </div>
               <p className="my-3 text-[12px] text-ink-500">
                 {restoreMode === "replace"
-                  ? "覆盖会替换当前数据并关闭外部调用，请先备份。密钥只保留同一服务已有的本机密钥。"
-                  : "合并保留当前模型、密钥和隐私设置，关联版本与投递记录一并导入。"}
+                  ? t(
+                      "覆盖会替换当前数据并关闭外部调用，请先备份。密钥只保留同一服务已有的本机密钥。",
+                      "Replacing overwrites current data and disables external calls. Export a backup first."
+                    )
+                  : t(
+                      "合并保留当前模型、密钥和隐私设置，关联版本与投递记录一并导入。",
+                      "Merging keeps your current models, keys, and privacy settings while importing resumes & applications."
+                    )}
               </p>
               <Btn
                 variant={restoreMode === "replace" ? "danger" : "primary"}
                 onClick={() => {
                   if (app.importData(restoring.raw, restoreMode))
                     setRestoring(null);
-                  else app.toast("err", "恢复失败，原有数据未改变");
+                  else app.toast("err", t("恢复失败，原有数据未改变", "Restore failed; existing data unchanged"));
                 }}
               >
-                {restoreMode === "replace" ? "确认覆盖恢复" : "确认合并导入"}
+                {restoreMode === "replace" ? t("确认覆盖恢复", "Confirm Replace") : t("确认合并导入", "Confirm Merge")}
               </Btn>
             </>
           )}

@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  clearSessionPassphrase,
   decryptText,
   encryptText,
   isEncryptedPayload,
   parseEncryptedPayload,
+  resolveApiKey,
+  setSessionPassphrase,
 } from "../crypto";
+import { chatOpenAI } from "../ai";
 import {
   downloadBackupFromGist,
   downloadBackupFromWebDav,
@@ -262,5 +266,53 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
     expect(downloaded.data.resumes[0].title).toBe("测试简历");
     expect(downloaded.raw).not.toContain("ghp_secret_token");
     expect(downloaded.raw).not.toContain("gist-pass");
+  });
+
+  it("decrypts encrypted API key in chatOpenAI when unlocked and blocks ciphertext transmission when locked", async () => {
+    const encryptedKey = await encryptText("sk-real-secret-key", "master-pass");
+    const provider = {
+      id: "m1",
+      name: "DeepSeek",
+      type: "external" as const,
+      protocol: "openai_compatible" as const,
+      base_url: "https://api.deepseek.com/v1",
+      api_key: encryptedKey,
+      model_name: "deepseek-chat",
+      temperature: 0.3,
+      max_tokens: 1024,
+      timeout_ms: 5000,
+      enabled: true,
+      created_at: new Date().toISOString(),
+    };
+
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+        { status: 200 }
+      )
+    );
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    try {
+      clearSessionPassphrase();
+      await expect(resolveApiKey(encryptedKey)).rejects.toThrow("解锁");
+      await expect(
+        chatOpenAI(provider, [{ role: "user", content: "hi" }])
+      ).rejects.toThrow("解锁");
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      setSessionPassphrase("master-pass");
+      const out = await chatOpenAI(provider, [{ role: "user", content: "hi" }]);
+      expect(out).toBe("ok");
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const init = (fetchSpy.mock.calls[0] as unknown[])[1] as RequestInit;
+      expect((init.headers as Record<string, string>).Authorization).toBe(
+        "Bearer sk-real-secret-key"
+      );
+    } finally {
+      clearSessionPassphrase();
+      globalThis.fetch = originalFetch;
+    }
   });
 });

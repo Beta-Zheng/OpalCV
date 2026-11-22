@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { enterTransition, exitTransition, PresenceLayer } from "./motion-layer";
 import { cx } from "../lib/utils";
 import { useApp, flushSave } from "../lib/store";
+import { useT } from "../lib/i18n";
 import { IconAlert, IconCheck, IconInfo, IconX } from "./icons";
 
 /** Shared keyboard and dismissal behavior for anchored action menus. */
@@ -114,21 +116,22 @@ export function Btn({
   size?: "sm" | "md" | "lg";
 }) {
   const styles: Record<BtnVariant, string> = {
-    primary: "bg-brand-600 text-white hover:bg-brand-700",
-    dark: "bg-ink-800 text-white hover:bg-ink-900",
-    ghost: "text-ink-600 hover:bg-ink-900/5 hover:text-ink-900",
+    primary: "cta-ai text-white",
+    dark: "bg-ink-900 text-white hover:bg-ink-800",
+    ghost: "text-ink-600 hover:bg-subtle hover:text-ink-900",
     outline:
-      "border border-ink-200 bg-white text-ink-800 hover:border-ink-400 hover:bg-subtle",
+      "bg-subtle text-ink-800 hover:bg-paper-200 hover:text-ink-900",
     danger:
-      "border border-danger-600/30 bg-danger-100/60 text-danger-700 hover:bg-danger-100",
+      "bg-danger-100/80 text-danger-700 hover:bg-danger-100",
     seal: "bg-seal-600 text-white hover:bg-seal-700",
   };
   return (
     <button
       type="button"
       data-size={size}
+      data-variant={variant}
       className={cx(
-        "app-btn inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-[14px] font-medium leading-5 transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-45",
+        "app-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-[14px] font-medium leading-5 transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-45",
         styles[variant],
         className
       )}
@@ -155,6 +158,7 @@ export function Modal({
   bare?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
   const headingId = useId();
   const [labelledBy, setLabelledBy] = useState<string>();
   useEffect(() => {
@@ -177,7 +181,8 @@ export function Modal({
       (controls()[0] ?? dialogRef.current)?.focus()
     );
     const onKey = (e: KeyboardEvent) => {
-      const dialogs = document.querySelectorAll("[data-app-dialog]");
+      const dialogs = Array.from(document.querySelectorAll("[data-app-dialog]"))
+        .filter((dialog) => !dialog.closest("[inert]"));
       if (dialogs[dialogs.length - 1] !== dialogRef.current) return;
       if (e.key === "Escape") {
         e.preventDefault();
@@ -216,16 +221,14 @@ export function Modal({
     };
   }, [open]);
 
-  if (!open) return null;
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {open && <PresenceLayer key="modal" className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="absolute inset-0 bg-ink-950/55 backdrop-blur-[2px]"
+          className="absolute inset-0 bg-ink-950/35 backdrop-blur-[6px]"
           onClick={onClose}
         />
         <motion.div
@@ -236,21 +239,20 @@ export function Modal({
           aria-label={labelledBy ? undefined : '简历操作对话框'}
           aria-labelledby={labelledBy}
           tabIndex={-1}
-          initial={{ opacity: 0, scale: 0.96, y: 6 }}
+          initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.97, y: reducedMotion ? 0 : 8 }}
           animate={{
             opacity: 1,
             scale: 1,
             y: 0,
-            transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
+            transition: enterTransition,
           }}
           exit={{
-            opacity: 0,
-            scale: 0.97,
-            y: 4,
-            transition: { duration: 0.15, ease: "easeIn" },
+            scale: reducedMotion ? 1 : 0.98,
+            y: reducedMotion ? 0 : 4,
+            transition: exitTransition,
           }}
           className={cx(
-            "relative w-full overflow-hidden rounded-xl bg-paper-25 shadow-2xl shadow-ink-950/30 ring-1 ring-ink-900/10",
+            "liquid-glass relative w-full overflow-hidden rounded-[28px]",
             width
           )}
         >
@@ -260,7 +262,7 @@ export function Modal({
             <div className="max-h-[86vh] overflow-y-auto">{children}</div>
           )}
         </motion.div>
-      </div>
+      </PresenceLayer>}
     </AnimatePresence>
   );
 }
@@ -268,22 +270,27 @@ export function Modal({
 export function ModalHeader({
   title,
   sub,
+  infoTip,
   onClose,
 }: {
   title: ReactNode;
   sub?: ReactNode;
+  infoTip?: string;
   onClose?: () => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-ink-100 px-5 py-4">
+    <div className="flex items-start justify-between gap-4 px-6 pb-3 pt-5">
       <div>
-        <h3 className="text-[20px] font-semibold leading-7 text-ink-900">
-          {title}
-        </h3>
-        {sub && <p className="mt-0.5 text-xs text-ink-400">{sub}</p>}
+        <div className="flex items-center gap-2">
+          <h3 className="text-[19px] font-bold leading-7 tracking-tight text-ink-900">
+            {title}
+          </h3>
+          {infoTip && <InfoTip align="left" content={infoTip} />}
+        </div>
+        {sub && <p className="mt-0.5 text-xs text-ink-500">{sub}</p>}
       </div>
       {onClose && (
-        <button onClick={onClose} className="tool-btn -mr-1" aria-label="关闭">
+        <button onClick={onClose} className="tool-btn modal-close -mr-1 rounded-full" aria-label="关闭">
           <IconX size={16} />
         </button>
       )}
@@ -297,7 +304,7 @@ export function Confirm({
   open,
   title,
   desc,
-  confirmText = "确认",
+  confirmText,
   danger,
   onConfirm,
   onCancel,
@@ -312,6 +319,8 @@ export function Confirm({
   onCancel: () => void;
   children?: ReactNode;
 }) {
+  const t = useT();
+  const resolvedConfirm = confirmText ?? t("确认", "Confirm");
   return (
     <Modal open={open} onClose={onCancel} width="max-w-sm">
       <div className="p-5">
@@ -338,10 +347,10 @@ export function Confirm({
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Btn variant="ghost" onClick={onCancel}>
-            取消
+            {t("取消", "Cancel")}
           </Btn>
           <Btn variant={danger ? "danger" : "primary"} onClick={onConfirm}>
-            {confirmText}
+            {resolvedConfirm}
           </Btn>
         </div>
       </div>
@@ -467,6 +476,7 @@ export function ScoreBar({ label, score }: { label: string; score: number }) {
 /* ---------------- Toast ---------------- */
 
 export function ToastHost() {
+  const reducedMotion = useReducedMotion();
   const toasts = useApp((s) => s.toasts);
   const dismiss = useApp((s) => s.dismissToast);
   const iconOf = {
@@ -475,40 +485,40 @@ export function ToastHost() {
     err: <IconAlert size={14} />,
     info: <IconInfo size={14} />,
   };
-  const toneOf = {
-    ok: "border-brand-200 bg-brand-50 text-brand-800",
-    warn: "border-seal-500/25 bg-seal-100 text-seal-700",
-    err: "border-danger-600/25 bg-danger-100 text-danger-700",
-    info: "border-ink-200 bg-white text-ink-700",
+  const iconTone = {
+    ok: "text-brand-600",
+    warn: "text-seal-600",
+    err: "text-danger-600",
+    info: "text-brand-600",
   };
   return (
-    <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-80 flex-col gap-2">
+    <div className="pointer-events-none fixed left-1/2 top-4 z-[85] flex w-[min(360px,calc(100vw-32px))] -translate-x-1/2 flex-col gap-2">
       <AnimatePresence initial={false}>
         {toasts.map((t) => (
           <motion.div
             key={t.id}
-            layout
-            initial={{ opacity: 0, x: 32 }}
+            layout={reducedMotion ? false : "position"}
+            initial={{ opacity: 0, y: reducedMotion ? 0 : -10, scale: 0.97 }}
             animate={{
               opacity: 1,
-              x: 0,
-              transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
+              y: 0,
+              scale: 1,
+              transition: enterTransition,
             }}
             exit={{
               opacity: 0,
-              x: 32,
-              transition: { duration: 0.18, ease: "easeIn" },
+              y: reducedMotion ? 0 : -8,
+              scale: 0.97,
+              transition: exitTransition,
             }}
-            className={cx(
-              "pointer-events-auto flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[12.5px] font-medium shadow-lg shadow-ink-950/10",
-              toneOf[t.kind]
-            )}
+            className="glass-tip pointer-events-auto relative flex items-center gap-2.5 rounded-2xl px-4 py-2.5 text-[12.5px] font-medium text-ink-900"
           >
-            <span className="mt-0.5 shrink-0">{iconOf[t.kind]}</span>
+            <span className={cx("shrink-0", iconTone[t.kind])}>{iconOf[t.kind]}</span>
             <span className="min-w-0 flex-1 leading-snug">{t.msg}</span>
             <button
+              type="button"
               onClick={() => dismiss(t.id)}
-              className="shrink-0 opacity-50 transition hover:opacity-100"
+              className="shrink-0 rounded-full p-0.5 text-ink-400 transition hover:bg-subtle hover:text-ink-900"
               aria-label="关闭提示"
             >
               <IconX size={12} />
@@ -525,14 +535,15 @@ export function ToastHost() {
 export function SaveIndicator({ compact = false }: { compact?: boolean } = {}) {
   const lastSavedAt = useApp((s) => s.lastSavedAt);
   const saveStatus = useApp((s) => s.saveStatus);
+  const t = useT();
   const [flash, setFlash] = useState(false);
   const prev = useRef(lastSavedAt);
   useEffect(() => {
     if (lastSavedAt && lastSavedAt !== prev.current) {
       setFlash(true);
-      const t = setTimeout(() => setFlash(false), 900);
+      const timer = setTimeout(() => setFlash(false), 900);
       prev.current = lastSavedAt;
-      return () => clearTimeout(t);
+      return () => clearTimeout(timer);
     }
     prev.current = lastSavedAt;
   }, [lastSavedAt]);
@@ -540,22 +551,29 @@ export function SaveIndicator({ compact = false }: { compact?: boolean } = {}) {
   if (saveStatus === "error")
     return (
       <span role="alert" className="text-[11px] text-danger-700">
-        {compact ? '保存失败 ' : '保存失败，请下载备份并检查浏览器存储空间 '}
+        {compact
+          ? t("保存失败 ", "Save failed ")
+          : t("保存失败，请下载备份并检查浏览器存储空间 ", "Save failed — download a backup and check storage ")}
         <button className="underline" onClick={flushSave}>
-          重试保存
+          {t("重试保存", "Retry")}
         </button>
       </span>
     );
   if (saveStatus === "saving")
     return (
       <span role="status" className="text-[11px] text-ink-400">
-        正在保存…
+        {t("正在保存…", "Saving…")}
       </span>
     );
   if (!lastSavedAt)
-    return <span className="font-mono text-[11px] text-ink-300">尚未修改</span>;
+    return (
+      <span className="font-mono text-[11px] text-ink-300">
+        {t("尚未修改", "No edits yet")}
+      </span>
+    );
   const d = new Date(lastSavedAt);
   const pad = (n: number) => String(n).padStart(2, "0");
+  const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   return (
     <span
       className={cx(
@@ -569,7 +587,9 @@ export function SaveIndicator({ compact = false }: { compact?: boolean } = {}) {
           flash ? "anim-pulse-dot bg-brand-500" : "bg-brand-400"
         )}
       />
-      {compact ? '已保存' : `仅此浏览器 · 已保存 ${pad(d.getHours())}:${pad(d.getMinutes())}`}
+      {compact
+        ? t("已保存", "Saved")
+        : t(`仅此浏览器 · 已保存 ${hhmm}`, `Local only · Saved ${hhmm}`)}
     </span>
   );
 }
@@ -590,7 +610,7 @@ export function Empty({
   accent?: "ai";
 }) {
   return (
-    <div className="anim-fade-up flex flex-col items-center justify-center rounded-xl border border-dashed border-ink-200 bg-white/40 px-6 py-10 text-center">
+    <div className="anim-fade-up flex flex-col items-center justify-center rounded-xl border border-dashed border-ink-200 bg-surface/60 px-6 py-10 text-center">
       <span
         className={cx(
           "mb-3 flex h-12 w-12 items-center justify-center rounded-xl",
@@ -616,6 +636,106 @@ export function Empty({
         </p>
       )}
       {children && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
+
+/* ---------------- 极简 ⓘ 悬浮/点击说明气泡 ---------------- */
+
+export function InfoTip(_props: {
+  content: string;
+  label?: string;
+  align?: "left" | "center" | "right";
+  className?: string;
+}) {
+  return null;
+}
+
+/* ---------------- 液态玻璃下拉选择器 ---------------- */
+
+export function GlassSelect({
+  value,
+  options,
+  onChange,
+  placeholder = "请选择",
+  ariaLabel,
+  disabled,
+  className,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  ariaLabel?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useActionMenu(open, setOpen, containerRef);
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <div ref={containerRef} className={cx("relative inline-block", className)}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        className={cx(
+          "liquid-input flex min-h-10 w-full items-center justify-between gap-2 rounded-full px-4 py-2 text-[13.5px] text-ink-900 transition-all disabled:cursor-not-allowed disabled:opacity-45",
+          !current && "text-ink-400"
+        )}
+      >
+        <span className="truncate">{current ? current.label : placeholder}</span>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={cx("shrink-0 text-ink-400 transition-transform duration-150", open && "rotate-180")}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="glass-tip app-menu absolute left-0 z-50 min-w-full rounded-2xl p-1.5"
+        >
+          {options.map((opt) => {
+            const active = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+                className={cx(
+                  "flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-[13px] transition-colors",
+                  active
+                    ? "glass-lens font-semibold"
+                    : "text-ink-700 hover:bg-subtle hover:text-ink-900"
+                )}
+              >
+                <span className="truncate">{opt.label}</span>
+                {active && <IconCheck size={14} className="shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

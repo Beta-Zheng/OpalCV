@@ -7,9 +7,16 @@ import type {
 } from "../types";
 import { cx, nowISO, uid } from "../lib/utils";
 import { testProvider, type ProviderDiagnosticCode } from "../lib/ai";
-import { decryptText, encryptText, isEncryptedPayload } from "../lib/crypto";
+import {
+  decryptText,
+  encryptText,
+  getSessionPassphrase,
+  isEncryptedPayload,
+  setSessionPassphrase as setGlobalSessionPassphrase,
+} from "../lib/crypto";
 import { useAppSlice } from "../lib/store";
-import { Btn, Confirm, Modal, ModalHeader, Toggle } from "../components/ui";
+import { providerDisplayName, useT, useUiLang } from "../lib/i18n";
+import { Btn, Confirm, GlassSelect, InfoTip, Modal, ModalHeader, Toggle } from "../components/ui";
 import {
   IconAlert,
   IconCheck,
@@ -23,8 +30,61 @@ import {
   IconZap,
 } from "../components/icons";
 
-// Session-only memory for the optional master passphrase; never persisted to storage.
-let sessionMasterPassphrase: string | null = null;
+const MODEL_PRESETS: Array<{
+  label: string;
+  patch: Partial<ModelProvider>;
+}> = [
+  {
+    label: "Ollama 本地",
+    patch: {
+      name: "本地 Ollama",
+      type: "local",
+      protocol: "ollama",
+      base_url: "http://localhost:11434",
+      model_name: "qwen2.5:7b",
+    },
+  },
+  {
+    label: "DeepSeek",
+    patch: {
+      name: "DeepSeek",
+      type: "external",
+      protocol: "openai_compatible",
+      base_url: "https://api.deepseek.com/v1",
+      model_name: "deepseek-chat",
+    },
+  },
+  {
+    label: "硅基流动",
+    patch: {
+      name: "SiliconFlow",
+      type: "external",
+      protocol: "openai_compatible",
+      base_url: "https://api.siliconflow.cn/v1",
+      model_name: "Qwen/Qwen2.5-72B-Instruct",
+    },
+  },
+  {
+    label: "通义千问",
+    patch: {
+      name: "通义千问",
+      type: "external",
+      protocol: "openai_compatible",
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model_name: "qwen-plus",
+    },
+  },
+  {
+    label: "OpenAI",
+    patch: {
+      name: "OpenAI",
+      type: "external",
+      protocol: "openai_compatible",
+      base_url: "https://api.openai.com/v1",
+      model_name: "gpt-4o-mini",
+    },
+  },
+];
 
 const TYPE_META: Record<ModelType, { label: string; cls: string }> = {
   local: { label: "本地", cls: "bg-brand-600 text-white" },
@@ -82,6 +142,7 @@ function ModelForm({
   const [showKey, setShowKey] = useState(false);
   const [keyModified, setKeyModified] = useState(!initialIsEncrypted);
   const [saving, setSaving] = useState(false);
+  const t = useT();
   const set = (patch: Partial<ModelProvider>) =>
     setM((v) => ({ ...v, ...patch }));
 
@@ -177,40 +238,59 @@ function ModelForm({
   return (
     <Modal open onClose={onClose} width="max-w-md">
       <ModalHeader
-        title={initial ? "编辑模型" : "新增模型"}
+        title={initial ? t("编辑模型", "Edit Model") : t("新增模型", "Add Model")}
         sub={
           m.type === "external"
-            ? "外部模型默认不参与路由，除非在隐私设置中显式开启"
-            : "本地模型优先参与路由"
+            ? t("外部模型默认不参与路由，除非在隐私设置中显式开启", "External models stay disabled unless explicitly enabled in privacy settings")
+            : t("本地模型优先参与路由", "Local models are prioritized for routing")
         }
         onClose={onClose}
       />
       <div className="flex flex-col gap-3 px-5 pb-5">
+        {!initial && (
+          <div>
+            <span className="field-label">{t("快捷填充常用服务", "Quick Presets")}</span>
+            <div className="flex flex-wrap gap-1.5">
+              {MODEL_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => set(preset.patch)}
+                  className="rounded-md border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block">
-            <span className="field-label">名称</span>
+            <span className="field-label">{t("名称", "Name")}</span>
             <input
               className="field-input"
               value={m.name}
-              placeholder="本地 Ollama"
+              placeholder={t("本地 Ollama", "Local Ollama")}
               onChange={(e) => set({ name: e.target.value })}
             />
           </label>
-          <label className="block">
-            <span className="field-label">类型</span>
-            <select data-ui-select
-              className="field-input"
+          <div className="block">
+            <span className="field-label">{t("类型", "Type")}</span>
+            <GlassSelect
+              ariaLabel={t("模型类型", "Model type")}
+              className="w-full"
               value={m.type}
-              onChange={(e) => set({ type: e.target.value as ModelType })}
-            >
-              <option value="local">local（本地）</option>
-              <option value="external">external（外部）</option>
-              <option value="private">private（私有网络）</option>
-            </select>
-          </label>
+              onChange={(v) => set({ type: v as ModelType })}
+              options={[
+                { value: "local", label: t("local（本地）", "Local") },
+                { value: "external", label: t("external（外部）", "External") },
+                { value: "private", label: t("private（私有网络）", "Private Network") },
+              ]}
+            />
+          </div>
         </div>
         <label className="block">
-          <span className="field-label">协议</span>
+          <span className="field-label">{t("协议", "Protocol")}</span>
           <div className="flex rounded-lg bg-paper-200 p-0.5">
             {(
               [
@@ -271,7 +351,7 @@ function ModelForm({
           </label>
           <label className="block">
             <span className="field-label">
-              API Key{m.type !== "external" && "（可选）"}
+              API Key{m.type !== "external" && t("（可选）", " (optional)")}
             </span>
             <div className="relative">
               <input
@@ -280,10 +360,10 @@ function ModelForm({
                 value={m.api_key}
                 placeholder={
                   initialIsEncrypted && !keyModified
-                    ? "已加密（留空保持原密钥）"
+                    ? t("已加密（留空保持原密钥）", "Encrypted (leave blank to keep)")
                     : m.type === "external"
                     ? "sk-…"
-                    : "本地可留空"
+                    : t("本地可留空", "Optional for local")
                 }
                 onChange={(e) => {
                   setKeyModified(true);
@@ -294,7 +374,7 @@ function ModelForm({
                 type="button"
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 text-ink-500 hover:text-ink-600"
                 onClick={() => setShowKey((v) => !v)}
-                aria-label="显示/隐藏 Key"
+                aria-label={t("显示/隐藏 Key", "Show or hide key")}
               >
                 {showKey ? <IconEyeOff size={14} /> : <IconEye size={14} />}
               </button>
@@ -303,7 +383,7 @@ function ModelForm({
         </div>
         <details>
           <summary className="cursor-pointer text-[12px] font-bold text-ink-500">
-            高级参数
+            {t("高级参数", "Advanced")}
           </summary>
           <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label className="block">
@@ -329,7 +409,7 @@ function ModelForm({
               />
             </label>
             <label className="block">
-              <span className="field-label">超时（ms）</span>
+              <span className="field-label">{t("超时（ms）", "Timeout (ms)")}</span>
               <input
                 className="field-input font-mono"
                 type="number"
@@ -343,20 +423,20 @@ function ModelForm({
         </details>
         <div className="flex items-center justify-between rounded-lg bg-paper-100 px-3 py-2">
           <span className="text-[12.5px] font-medium text-ink-700">
-            启用该模型
+            {t("启用该模型", "Enable this model")}
           </span>
           <Toggle
             checked={m.enabled}
             onChange={(v) => set({ enabled: v })}
-            label="启用"
+            label={t("启用", "Enable")}
           />
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Btn variant="ghost" onClick={onClose}>
-            取消
+            {t("取消", "Cancel")}
           </Btn>
           <Btn variant="primary" onClick={() => void submit()} disabled={saving}>
-            {saving ? "保存中…" : "保存模型"}
+            {saving ? t("保存中…", "Saving…") : t("保存模型", "Save Model")}
           </Btn>
         </div>
       </div>
@@ -384,20 +464,21 @@ export default function Models() {
     "externalCallCount",
     "toast"
   );
+  const uiLang = useUiLang();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ModelProvider | null>(null);
   const [delTarget, setDelTarget] = useState<ModelProvider | null>(null);
   const [tests, setTests] = useState<Record<string, TestState>>({});
   const [confirmExternal, setConfirmExternal] = useState(false);
   const [sessionPassphrase, setSessionPassphrase] = useState<string | null>(
-    () => sessionMasterPassphrase
+    () => getSessionPassphrase()
   );
   const [passphraseInput, setPassphraseInput] = useState("");
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [cryptoBusy, setCryptoBusy] = useState(false);
 
   const updateSessionPassphrase = (next: string | null) => {
-    sessionMasterPassphrase = next;
+    setGlobalSessionPassphrase(next);
     setSessionPassphrase(next);
   };
 
@@ -497,11 +578,12 @@ export default function Models() {
 
   const localModel = models.find((m) => m.enabled && m.type !== "external");
   const externalModel = models.find((m) => m.enabled && m.type === "external");
+  const t = useT();
   const modeLabel = localModel
-    ? "本机或私有模型已启用"
+    ? t("本地模型", "Local Model")
     : privacy.allowExternal && privacy.route !== "local_only" && externalModel
-    ? "外部模型，逐次确认"
-    : "本地规则，无需连接服务";
+    ? t("外部模型", "External Model")
+    : t("本地规则", "Local Rules");
 
   const runTest = async (p: ModelProvider) => {
     let target = p;
@@ -539,291 +621,287 @@ export default function Models() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-12 pt-7 sm:px-6">
-      <header className="anim-fade-up">
-        <h1 className="text-[28px] font-semibold tracking-tight text-ink-900">
-          模型与隐私
-        </h1>
-      </header>
-
-      <section className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-5">
-        <div>
-          <p className="text-[14px] font-medium text-ink-800">
-            当前：{modeLabel}
-          </p>
-          <details className="mt-2 text-[12px] text-ink-500">
-            <summary className="cursor-pointer">运行说明</summary>
-            <p className="mt-2">
-              {localModel
-                ? `配置模型：${localModel.name}。连接失败时会回退本地规则；启用不代表服务当前可连接。`
-                : "本地规则直接在浏览器执行。外部模型仍需每次确认发送内容。"}
-            </p>
-          </details>
+      <header className="anim-fade-up flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-[28px] font-bold tracking-tight text-ink-900">
+            {t("模型与隐私", "Models & Privacy")}
+          </h1>
+          <InfoTip
+            align="left"
+            label="模型与隐私说明"
+            content={
+              localModel
+                ? `当前本地模型：${localModel.name}。连接失败时自动回退本地规则；外部模型发送前逐次确认。`
+                : "默认仅在本地规则运行，不上传任何简历内容；启用外部模型前逐次弹窗确认。"
+            }
+          />
+          <span className="chip rounded-full bg-brand-50 px-2.5 py-1 text-[12px] text-brand-700">
+            {modeLabel}
+          </span>
         </div>
         <Btn
-          variant="outline"
-          className="text-[13px]"
+          variant="primary"
+          size="sm"
           onClick={() => {
-            models.filter((m) => m.enabled).forEach((m) => toggleModel(m.id));
-            setPrivacy({ allowExternal: false, route: "local_only" });
-            toast("ok", "已切换到本地规则模式");
+            setEditing(null);
+            setFormOpen(true);
           }}
         >
-          切换到本地规则
+          <IconPlus size={13} /> {t("新增模型", "Add Model")}
         </Btn>
-      </section>
+      </header>
 
-      {/* 隐私与路由 */}
-      <section
-        className="anim-fade-up rounded-2xl border border-ink-200 bg-paper-25 p-5"
-        style={{ animationDelay: "0.05s" }}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <span
-              className={cx(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-                privacy.allowExternal
-                  ? "bg-seal-100 text-seal-600"
-                  : "bg-paper-100 text-ink-600"
-              )}
-            >
-              <IconShield size={19} />
-            </span>
-            <div>
-              <h2 className="text-[15px] font-bold text-ink-900">
-                允许调用外部模型
-              </h2>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-ink-400">
-                发送条目到外部服务前逐次确认。累计调用{" "}
-                <b className="font-mono text-ink-700">{externalCallCount}</b>{" "}
-                次。
-              </p>
-            </div>
-          </div>
-          <Toggle
-            checked={privacy.allowExternal}
-            onChange={(v) => {
-              if (v) setConfirmExternal(true);
-              else {
-                setPrivacy({ allowExternal: false });
-                toast("ok", "外部模型已关闭，所有请求仅走本地");
-              }
-            }}
-            label="允许外部模型"
-          />
-        </div>
-        <div className="mt-4 grid gap-3 border-t border-ink-100 pt-4 sm:grid-cols-3">
-          {(
-            [
-              [
-                "local_first",
-                "本地优先",
-                "本地优先，本地不可用且已授权时才用外部",
-              ],
-              ["ask_before_external", "逐次确认", "每次使用外部模型前弹窗确认"],
-              [
-                "local_only",
-                "仅本地",
-                "绝不发起外部请求，无本地模型时用规则引擎",
-              ],
-            ] as Array<[RouteStrategy, string, string]>
-          ).map(([k, label, desc]) => (
-            <button
-              key={k}
-              aria-pressed={privacy.route === k}
-              onClick={() => {
-                setPrivacy({ route: k });
-                toast("ok", `已切换为${label}`);
-              }}
-              className={cx(
-                "rounded-xl border p-3 text-left transition-all",
-                privacy.route === k
-                  ? "border-brand-500 bg-brand-50"
-                  : "border-ink-200 bg-white hover:border-ink-300"
-              )}
-            >
+      {/* 隐私路由 & 本地主密码（两列等高极简卡片） */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section
+          className="soft-panel anim-fade-up flex flex-col justify-between gap-4 rounded-[24px] p-5"
+          style={{ animationDelay: "0.05s" }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
               <span
                 className={cx(
-                  "flex items-center gap-1.5 text-[13px] font-medium",
-                  privacy.route === k ? "text-brand-700" : "text-ink-700"
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                  privacy.allowExternal
+                    ? "bg-seal-100 text-seal-600"
+                    : "bg-surface text-brand-600"
                 )}
               >
-                {privacy.route === k && <IconCheck size={11} />}
-                {label}
+                <IconShield size={17} />
               </span>
-              <span className="mt-1 block text-[12px] leading-relaxed text-ink-500">
-                {desc}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* 本地主密码加密 API Key */}
-      <section
-        className="anim-fade-up rounded-2xl border border-ink-200 bg-paper-25 p-5"
-        style={{ animationDelay: "0.08s" }}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <span
-              className={cx(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-                sessionPassphrase
-                  ? "bg-ok-bg text-ok"
-                  : encryptedModels.length > 0
-                  ? "bg-seal-100 text-seal-600"
-                  : "bg-paper-100 text-ink-600"
-              )}
-            >
-              <IconLock size={18} />
-            </span>
-            <div>
               <h2 className="text-[15px] font-bold text-ink-900">
-                本地主密码加密 API Key
-                <span className="ml-2 rounded-md bg-paper-200 px-1.5 py-0.5 text-[11px] font-medium text-ink-500">
-                  可选
-                </span>
+                {t("允许外部模型", "Allow External Models")}
               </h2>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-ink-500">
-                {sessionPassphrase
-                  ? `主密码已在当前会话内存解锁（已加密 ${encryptedModels.length} 个，明文 ${plaintextModels.length} 个）。主密码不会写入本地存储。`
-                  : encryptedModels.length > 0
-                  ? `检测到 ${encryptedModels.length} 个已加密 API Key，当前处于锁定状态；输入主密码解锁后可编辑或测试连接。`
-                  : "未设置主密码时保持明文存储与旧版完全兼容；设置后将使用 Web Crypto AES-GCM 加密保存的 API Key。"}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {!sessionPassphrase ? (
-          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3.5">
-            <div className="relative min-w-[220px] flex-1">
-              <input
-                type={showPassphrase ? "text" : "password"}
-                className="field-input pr-8 font-mono"
-                value={passphraseInput}
-                onChange={(e) => setPassphraseInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void unlockOrEnablePassphrase();
-                }}
-                placeholder={
-                  encryptedModels.length > 0
-                    ? "输入本地主密码以解锁…"
-                    : "设置本地主密码（仅保存在会话内存）…"
-                }
-                aria-label="本地主密码"
+              <InfoTip
+                content={`开启后发送内容到外部服务前会逐次弹窗确认。累计外部调用 ${externalCallCount} 次。`}
               />
-              <button
-                type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-500 hover:text-ink-700"
-                onClick={() => setShowPassphrase((v) => !v)}
-                aria-label="显示/隐藏主密码"
-              >
-                {showPassphrase ? (
-                  <IconEyeOff size={14} />
-                ) : (
-                  <IconEye size={14} />
-                )}
-              </button>
             </div>
-            <Btn
-              variant="primary"
-              className="h-9 text-[12.5px]"
-              disabled={cryptoBusy || !passphraseInput}
-              onClick={() => void unlockOrEnablePassphrase()}
-            >
-              <IconLock size={13} />{" "}
-              {cryptoBusy
-                ? "处理中…"
-                : encryptedModels.length > 0
-                ? "解锁主密码"
-                : "启用并加密现有密钥"}
-            </Btn>
+            <Toggle
+              checked={privacy.allowExternal}
+              onChange={(v) => {
+                if (v) setConfirmExternal(true);
+                else {
+                  setPrivacy({ allowExternal: false });
+                  toast("ok", t("外部模型已关闭，所有请求仅走本地", "External models disabled; local-only mode active"));
+                }
+              }}
+              label={t("允许外部模型", "Allow External Models")}
+            />
           </div>
-        ) : (
-          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3.5">
-            {plaintextModels.length > 0 && (
+
+          <div className="liquid-glass relative grid grid-cols-3 gap-1 rounded-full p-1">
+            {(
+              [
+                [
+                  "local_first",
+                  t("本地优先", "Local First"),
+                  t("本地优先，本地不可用且已授权时才用外部", "Prefer local model; fall back to external only when allowed"),
+                ],
+                ["ask_before_external", t("逐次确认", "Ask Each Time"), t("每次使用外部模型前弹窗确认", "Confirm before every external request")],
+                [
+                  "local_only",
+                  t("仅本地", "Local Only"),
+                  t("绝不发起外部请求，无本地模型时用规则引擎", "Never send external requests; use local rules"),
+                ],
+              ] as Array<[RouteStrategy, string, string]>
+            ).map(([k, label, desc]) => (
+              <button
+                key={k}
+                type="button"
+                title={desc}
+                aria-pressed={privacy.route === k}
+                onClick={() => {
+                  setPrivacy({ route: k });
+                  toast("ok", t(`已切换为${label}`, `Switched to ${label}`));
+                }}
+                className={cx(
+                  "rounded-full px-3 py-2 text-[13px] transition-all",
+                  privacy.route === k
+                    ? "glass-lens font-semibold"
+                    : "text-ink-500 hover:text-ink-900"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* 本地主密码加密 API Key */}
+        <section
+          className="soft-panel anim-fade-up flex flex-col justify-between gap-4 rounded-[24px] p-5"
+          style={{ animationDelay: "0.08s" }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span
+                className={cx(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                  sessionPassphrase
+                    ? "bg-ok-bg text-ok"
+                    : encryptedModels.length > 0
+                    ? "bg-seal-100 text-seal-600"
+                    : "bg-surface text-ink-600"
+                )}
+              >
+                <IconLock size={17} />
+              </span>
+              <h2 className="text-[15px] font-bold text-ink-900">
+                {t("API Key 主密码", "API Key Passphrase")}
+              </h2>
+              <InfoTip
+                content={
+                  sessionPassphrase
+                    ? t(
+                        `主密码已在当前会话解锁（已加密 ${encryptedModels.length} 个，明文 ${plaintextModels.length} 个），不会写入磁盘。`,
+                        `Passphrase unlocked for this session (${encryptedModels.length} encrypted, ${plaintextModels.length} plaintext). Never written to disk.`
+                      )
+                    : encryptedModels.length > 0
+                    ? t(
+                        `检测到 ${encryptedModels.length} 个已加密 API Key，输入主密码解锁后可使用。`,
+                        `${encryptedModels.length} encrypted API key(s) detected. Enter your passphrase to unlock.`
+                      )
+                    : t(
+                        "可选。设置后将使用 Web Crypto AES-GCM 加密本地保存的 API Key，主密码仅驻留当前会话内存。",
+                        "Optional. Encrypts locally saved API keys with Web Crypto AES-GCM; passphrase stays in memory only."
+                      )
+                }
+              />
+            </div>
+            {(sessionPassphrase || encryptedModels.length > 0) && (
+              <span className="chip rounded-full bg-surface px-2.5 py-0.5 text-[11px] text-ink-500">
+                {sessionPassphrase ? t("已解锁", "Unlocked") : t("已锁定", "Locked")}
+              </span>
+            )}
+          </div>
+
+          {!sessionPassphrase ? (
+            <div className="flex items-center gap-2">
+              <div className="liquid-input relative flex min-w-0 flex-1 items-center rounded-full px-3.5 py-1.5">
+                <input
+                  type={showPassphrase ? "text" : "password"}
+                  className="w-full bg-transparent pr-7 font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
+                  value={passphraseInput}
+                  onChange={(e) => setPassphraseInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void unlockOrEnablePassphrase();
+                  }}
+                  placeholder={
+                    encryptedModels.length > 0
+                      ? t("输入主密码解锁…", "Enter passphrase to unlock…")
+                      : t("设置本地主密码…", "Set local passphrase…")
+                  }
+                  aria-label={t("本地主密码", "Local passphrase")}
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+                  onClick={() => setShowPassphrase((v) => !v)}
+                  aria-label={t("显示/隐藏主密码", "Show or hide passphrase")}
+                >
+                  {showPassphrase ? (
+                    <IconEyeOff size={14} />
+                  ) : (
+                    <IconEye size={14} />
+                  )}
+                </button>
+              </div>
               <Btn
                 variant="primary"
-                className="h-8 text-[12px]"
-                disabled={cryptoBusy}
-                onClick={() => void encryptAllPlaintextKeys()}
+                size="sm"
+                className="shrink-0"
+                disabled={cryptoBusy || !passphraseInput}
+                onClick={() => void unlockOrEnablePassphrase()}
               >
-                加密 {plaintextModels.length} 个明文 Key
+                {cryptoBusy
+                  ? t("处理中…", "Working…")
+                  : encryptedModels.length > 0
+                  ? t("解锁", "Unlock")
+                  : t("启用加密", "Enable")}
               </Btn>
-            )}
-            {encryptedModels.length > 0 && (
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {plaintextModels.length > 0 && (
+                <Btn
+                  variant="primary"
+                  size="sm"
+                  disabled={cryptoBusy}
+                  onClick={() => void encryptAllPlaintextKeys()}
+                >
+                  {t(`加密 ${plaintextModels.length} 个明文 Key`, `Encrypt ${plaintextModels.length} Keys`)}
+                </Btn>
+              )}
+              {encryptedModels.length > 0 && (
+                <Btn
+                  variant="outline"
+                  size="sm"
+                  disabled={cryptoBusy}
+                  onClick={() => void decryptAllToPlaintext()}
+                >
+                  {t("移除加密", "Decrypt All")}
+                </Btn>
+              )}
               <Btn
-                variant="outline"
-                className="h-8 text-[12px]"
+                variant="ghost"
+                size="sm"
                 disabled={cryptoBusy}
-                onClick={() => void decryptAllToPlaintext()}
+                onClick={() => {
+                  updateSessionPassphrase(null);
+                  toast("info", t("已锁定：会话主密码已从内存清除", "Locked: session passphrase cleared"));
+                }}
               >
-                解密为明文（移除加密）
+                {t("锁定会话", "Lock Session")}
               </Btn>
-            )}
-            <Btn
-              variant="ghost"
-              className="h-8 text-[12px]"
-              disabled={cryptoBusy}
-              onClick={() => {
-                updateSessionPassphrase(null);
-                toast("info", "已锁定：会话主密码已从内存清除");
-              }}
-            >
-              锁定会话
-            </Btn>
-          </div>
-        )}
-      </section>
+            </div>
+          )}
+        </section>
+      </div>
 
       {/* 模型列表 */}
       <section className="anim-fade-up" style={{ animationDelay: "0.1s" }}>
-        <div className="mb-2.5 flex items-center justify-between">
-          <h2 className="font-display text-[18px] font-bold text-ink-900">
-            已配置模型{" "}
-            <span className="text-[12px] font-medium text-ink-500">
-              {models.length}
-            </span>
-          </h2>
-          <Btn
-            variant="primary"
-            className="h-8 text-[12px]"
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <IconPlus size={13} /> 新增模型
-          </Btn>
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="text-[17px] font-bold text-ink-900">{t("已配置模型", "Configured Models")}</h2>
+          <span className="font-mono text-[12px] text-ink-400">{models.length}</span>
+          <InfoTip
+            align="left"
+            label={t("本地模型连接帮助", "Local model help")}
+            content={t(
+              '本地 Ollama 需先运行 ollama serve 并拉取模型（如 ollama pull qwen2.5:7b）；若浏览器提示 CORS 拦截，请设置 OLLAMA_ORIGINS="*" 后重启。',
+              'Start Ollama with "ollama serve" and pull a model (e.g. ollama pull qwen2.5:7b). If blocked by CORS, set OLLAMA_ORIGINS="*" and restart.'
+            )}
+          />
         </div>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3.5 md:grid-cols-2">
           {models.map((m) => {
-            const t = tests[m.id];
+            const testRes = tests[m.id];
             return (
               <div
                 key={m.id}
                 className={cx(
-                  "group rounded-xl border bg-surface p-4 transition-colors",
-                  m.enabled ? "border-brand-200" : "border-line"
+                  "group rounded-[22px] p-5 transition-all",
+                  m.enabled ? "pastel-violet" : "soft-panel"
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="truncate text-[14px] font-bold text-ink-900">
-                        {m.name}
+                      <h3 className="truncate text-[15px] font-bold text-ink-900">
+                        {providerDisplayName(m.name, uiLang)}
                       </h3>
-                      <span className={cx("chip", TYPE_META[m.type].cls)}>
-                        {TYPE_META[m.type].label}
+                      <span className={cx("chip rounded-full px-2.5", TYPE_META[m.type].cls)}>
+                        {m.type === "local"
+                          ? t("本地", "Local")
+                          : m.type === "external"
+                            ? t("外部", "External")
+                            : t("私有", "Private")}
                       </span>
                     </div>
                     <p
-                      className="mt-1 truncate text-[12px] text-ink-500"
+                      className="mt-1 truncate font-mono text-[12px] text-ink-500"
                       title={m.base_url}
                     >
-                      {m.base_url}
+                      {m.model_name} · {m.base_url}
                     </p>
                   </div>
                   <Toggle
@@ -832,89 +910,64 @@ export default function Models() {
                       toggleModel(m.id);
                       toast(
                         "info",
-                        `「${m.name}」已${m.enabled ? "停用" : "启用"}`
+                        t(
+                          `「${m.name}」已${m.enabled ? "停用" : "启用"}`,
+                          `${m.name} ${m.enabled ? "disabled" : "enabled"}`
+                        )
                       );
                     }}
-                    label="启用模型"
+                    label={t("启用模型", "Enable model")}
                   />
                 </div>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <span className="chip bg-paper-200 font-mono text-ink-600">
-                    {m.model_name}
-                  </span>
-                </div>
-                <details className="mt-2 text-[12px] text-ink-500">
-                  <summary className="cursor-pointer">
-                    连接参数
-                    {m.api_key
-                      ? isEncryptedPayload(m.api_key)
-                        ? sessionPassphrase
-                          ? " · 已加密（已解锁）"
-                          : " · 已加密（已锁定）"
-                        : " · 已配置密钥"
-                      : ""}
-                  </summary>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="chip bg-paper-200 text-ink-600">
-                      {m.protocol}
-                    </span>
-                    <span className="chip bg-paper-200 text-ink-600">
-                      temp {m.temperature}
-                    </span>
-                    <span className="chip bg-paper-200 font-mono text-ink-400">
-                      {m.timeout_ms / 1000}s 超时
-                    </span>
-                  </div>
-                </details>
-                {t && !t.running && (
+                {testRes && !testRes.running && (
                   <div
                     className={cx(
                       "mt-2.5 flex items-start gap-2 rounded-lg px-2.5 py-2 text-[12px] leading-snug",
-                      t.ok
+                      testRes.ok
                         ? "bg-ok-bg text-ok"
                         : "bg-danger-100 text-danger-700"
                     )}
                   >
-                    {t.ok ? (
+                    {testRes.ok ? (
                       <IconCheck size={13} className="mt-0.5 shrink-0" />
                     ) : (
                       <IconAlert size={13} className="mt-0.5 shrink-0" />
                     )}
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5 font-medium">
-                        {!t.ok && t.code && DIAG_BADGE[t.code] && (
+                        {!testRes.ok && testRes.code && DIAG_BADGE[testRes.code] && (
                           <span className="rounded bg-danger-200/70 px-1.5 py-0.5 text-[10.5px] font-bold text-danger-800">
-                            {DIAG_BADGE[t.code]}
+                            {DIAG_BADGE[testRes.code]}
                           </span>
                         )}
-                        <span>{t.message}</span>
-                        {t.ok && (
+                        <span>{testRes.message}</span>
+                        {testRes.ok && (
                           <span className="font-mono text-[11.5px] opacity-75">
-                            {t.latency}ms · JSON 输出可用
+                            {testRes.latency}ms · {t("JSON 输出可用", "JSON ready")}
                           </span>
                         )}
                       </div>
-                      {t.hint && (
+                      {testRes.hint && (
                         <p className="text-[11.5px] leading-relaxed opacity-90">
-                          {t.hint}
+                          {testRes.hint}
                         </p>
                       )}
-                      {!t.ok &&
-                        t.availableModels &&
-                        t.availableModels.length > 0 && (
+                      {!testRes.ok &&
+                        testRes.availableModels &&
+                        testRes.availableModels.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1 pt-0.5">
                             <span className="text-[11px] opacity-80">
-                              点击切换可用模型：
+                              {t("点击切换可用模型：", "Available models:")}
                             </span>
-                            {t.availableModels.slice(0, 6).map((name) => (
+                            {testRes.availableModels.slice(0, 6).map((name) => (
                               <button
                                 key={name}
                                 type="button"
                                 onClick={() => {
                                   saveModel({ ...m, model_name: name });
-                                  toast("ok", `已切换模型为「${name}」`);
+                                  toast("ok", t(`已切换模型为「${name}」`, `Switched model to ${name}`));
                                 }}
-                                className="rounded border border-danger-300/70 bg-white/80 px-1.5 py-0.5 font-mono text-[11px] text-ink-800 transition hover:bg-white"
+                                className="rounded border border-danger-300/70 bg-surface/80 px-1.5 py-0.5 font-mono text-[11px] text-ink-800 transition hover:bg-surface"
                               >
                                 {name}
                               </button>
@@ -929,25 +982,25 @@ export default function Models() {
                     variant="outline"
                     className="h-7 px-2.5 text-[11.5px]"
                     onClick={() => runTest(m)}
-                    disabled={t?.running}
+                    disabled={testRes?.running}
                   >
-                    <IconZap size={12} /> {t?.running ? "测试中…" : "测试连接"}
+                    <IconZap size={12} /> {testRes?.running ? t("测试中…", "Testing…") : t("测试连接", "Test Connection")}
                   </Btn>
-                  <div className="ml-auto flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="ml-auto flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <button
                       className="tool-btn"
                       onClick={() => {
                         setEditing(m);
                         setFormOpen(true);
                       }}
-                      aria-label="编辑模型"
+                      aria-label={t("编辑模型", "Edit model")}
                     >
                       <IconEdit size={14} />
                     </button>
                     <button
                       className="tool-btn hover:bg-danger-100 hover:text-danger-600"
                       onClick={() => setDelTarget(m)}
-                      aria-label="删除模型"
+                      aria-label={t("删除模型", "Delete model")}
                     >
                       <IconTrash size={14} />
                     </button>
@@ -957,20 +1010,6 @@ export default function Models() {
             );
           })}
         </div>
-        <details className="mt-3 text-[12px] text-ink-500">
-          <summary className="cursor-pointer">本地模型连接帮助</summary>
-          <p className="mt-2 leading-relaxed">
-            提示：本地 Ollama 需先在本机运行{" "}
-            <span className="font-mono text-ink-400">ollama serve</span>{" "}
-            并拉取模型（如{" "}
-            <span className="font-mono text-ink-400">
-              ollama pull qwen2.5:7b
-            </span>
-            ）。若浏览器端提示 CORS 跨域拦截，请设置环境变量{" "}
-            <span className="font-mono text-ink-400">OLLAMA_ORIGINS="*"</span>{" "}
-            后重启 Ollama。API Key 仅保存在本机，不在日志与界面明文展示。
-          </p>
-        </details>
       </section>
 
       {formOpen && (
@@ -984,13 +1023,16 @@ export default function Models() {
       <Confirm
         open={!!delTarget}
         danger
-        title={`删除模型「${delTarget?.name}」？`}
-        desc="删除后相关路由将失效；若没有其他可用模型，AI 功能会降级为本地规则引擎。"
-        confirmText="删除模型"
+        title={t(`删除模型「${delTarget?.name}」？`, `Delete model "${delTarget?.name}"?`)}
+        desc={t(
+          "删除后相关路由将失效；若没有其他可用模型，AI 功能会降级为本地规则引擎。",
+          "Routing for this provider will stop. If no other model is available, AI features fall back to local rules."
+        )}
+        confirmText={t("删除模型", "Delete Model")}
         onConfirm={() => {
           if (delTarget) {
             deleteModel(delTarget.id);
-            toast("ok", "模型已删除");
+            toast("ok", t("模型已删除", "Model deleted"));
           }
           setDelTarget(null);
         }}
@@ -999,12 +1041,14 @@ export default function Models() {
 
       <Confirm
         open={confirmExternal}
-        title="开启外部模型？"
+        title={t("开启外部模型？", "Enable external models?")}
         desc={
           <span>
-            开启后，当本地模型不可用时，简历条目内容可能被发送到你配置的外部 API
-            服务进行处理。
-            <b className="text-ink-800"> 默认不会自动调用</b>
+            {t(
+              "开启后，当本地模型不可用时，简历条目内容可能被发送到你配置的外部 API 服务进行处理。",
+              "When enabled and no local model is available, resume items may be sent to your configured external API. "
+            )}
+            <b className="text-ink-800">{t(" 默认不会自动调用", " Never called automatically")}</b>
             ，每次外部调用前都会明确提示。
           </span>
         }

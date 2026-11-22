@@ -13,6 +13,7 @@ import type {
   RouteStrategy,
 } from "./ai-types";
 import { ACTION_LABELS } from "../types";
+import { isEncryptedPayload, resolveApiKey } from "./crypto";
 import { containsTerm, stripHtml, hasAchievementMetric } from "./utils";
 
 export interface AISuggestionOutput {
@@ -265,12 +266,18 @@ export async function chatOpenAI(
   if (stream) {
     body.stream = true;
   }
+  const apiKey = isEncryptedPayload(p.api_key)
+    ? await resolveApiKey(p.api_key)
+    : p.api_key || "";
+  if (options.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   const init: RequestInit = {
     method: "POST",
     signal: options.signal,
     headers: {
       "Content-Type": "application/json",
-      ...(p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {}),
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     body: JSON.stringify(body),
   };
@@ -723,11 +730,14 @@ export async function testProvider(
       };
     }
 
+    const apiKey = isEncryptedPayload(p.api_key)
+      ? await resolveApiKey(p.api_key)
+      : p.api_key || "";
     const res = await fetchWithTimeout(
       `${base}/models`,
       {
         method: "GET",
-        headers: p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {},
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       },
       p.timeout_ms
     );

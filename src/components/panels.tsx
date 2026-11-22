@@ -25,6 +25,7 @@ import type {
 } from "../types";
 import { ACTION_LABELS, SECTION_LABELS } from "../types";
 import { cx, diffLines, fmtTime, timeAgo } from "../lib/utils";
+import { actionLabel, useT, useUiLang } from "../lib/i18n";
 import { useApp, useAppSlice } from "../lib/store";
 import {
   matchResumeData,
@@ -82,6 +83,7 @@ function OutlineItem({
     isDragging,
   } = useSortable({ id: section.section_id });
   const toggleSection = useApp((s) => s.toggleSection);
+  const t = useT();
   // 点击标题跳转到中栏对应模块卡；scrollIntoView 沿最近的滚动容器（中栏 main）滚动
   const scrollToSection = () => {
     document
@@ -93,12 +95,12 @@ function OutlineItem({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cx(
-        "group flex items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all duration-150",
+        "group flex items-center gap-1.5 rounded-xl px-2 py-1.5 transition-all duration-150",
         isDragging
-          ? "z-10 border-brand-400 bg-brand-50 shadow-lg shadow-brand-900/10"
+          ? "z-10 bg-brand-50 shadow-lg shadow-brand-900/10 ring-1 ring-brand-400/50"
           : active && section.visible
-          ? "border-brand-200 bg-brand-50"
-          : "border-transparent hover:border-ink-200 hover:bg-white",
+          ? "bg-brand-50"
+          : "hover:bg-surface/80",
         !section.visible && "opacity-45"
       )}
     >
@@ -111,14 +113,14 @@ function OutlineItem({
             ? "text-brand-500"
             : "text-ink-500 hover:text-ink-600"
         )}
-        aria-label="拖动排序"
+        aria-label={t("拖动排序", "Drag to reorder")}
       >
         <IconGrip size={14} />
       </button>
       <button
         type="button"
         onClick={scrollToSection}
-        title="点击跳转到该模块"
+        title={t("点击跳转到该模块", "Jump to section")}
         className={cx(
           "min-w-0 flex-1 truncate rounded text-left text-[12.5px] transition-colors hover:text-brand-700",
           section.visible
@@ -136,7 +138,7 @@ function OutlineItem({
       <button
         className="tool-btn h-6 w-6 opacity-0 transition group-hover:opacity-100"
         onClick={() => toggleSection(resumeId, section.section_id)}
-        aria-label="显示/隐藏"
+        aria-label={t("显示/隐藏", "Show / hide")}
       >
         {section.visible ? <IconEye size={12} /> : <IconEyeOff size={12} />}
       </button>
@@ -155,6 +157,7 @@ export function OutlinePanel({
 }) {
   const reorderSections = useApp((s) => s.reorderSections);
   const toast = useApp((s) => s.toast);
+  const t = useT();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   );
@@ -170,24 +173,27 @@ export function OutlinePanel({
     const moved = sections[oldIdx];
     toast(
       "ok",
-      `「${moved.title}」已移动到第 ${newIdx + 1} 位，顺序已自动保存`
+      t(
+        `「${moved.title}」已移动到第 ${newIdx + 1} 位，顺序已自动保存`,
+        `Moved "${moved.title}" to position ${newIdx + 1} (auto-saved)`
+      )
     );
   };
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-3 pb-2 pt-3">
-        <h2 className="text-[12px] font-bold  text-ink-400">
-          栏目目录
+        <h2 className="text-[12px] font-bold text-ink-400">
+          {t("栏目目录", "Outline")}
         </h2>
         {onAdd && (
           <button
             type="button"
             onClick={onAdd}
-            className="flex items-center gap-1 rounded px-2 py-1 text-[12px] text-ink-600 hover:bg-paper-200"
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-ink-600 transition hover:bg-surface"
           >
             <IconPlus size={12} />
-            添加栏目
+            {t("添加栏目", "Add Section")}
           </button>
         )}
       </div>
@@ -212,8 +218,11 @@ export function OutlinePanel({
           </ul>
         </SortableContext>
       </DndContext>
-      <p className="mt-auto border-t border-ink-100 px-3 py-2.5 text-[10.5px] leading-relaxed text-ink-500">
-        顺序实时同步到预览与 PDF 导出；隐藏的模块保留位置但不渲染。
+      <p className="mt-auto mx-2 mb-2 rounded-xl bg-subtle/70 px-3 py-2 text-[10.5px] leading-relaxed text-ink-500">
+        {t(
+          "顺序实时同步到预览与 PDF 导出；隐藏的模块保留位置但不渲染。",
+          "Order syncs live to preview and PDF export; hidden sections stay in place without rendering."
+        )}
       </p>
     </div>
   );
@@ -232,7 +241,7 @@ function FieldDiff({
 }) {
   if (from === to) return null;
   return (
-    <div className="rounded-md border border-ink-100 bg-white px-2.5 py-1.5 text-[12px]">
+    <div className="rounded-lg bg-surface px-2.5 py-1.5 text-[12px]">
       <span className="mr-2 font-mono text-[12px] uppercase tracking-wide text-ink-500">
         {label}
       </span>
@@ -255,11 +264,11 @@ function BulletsDiff({ from, to }: { from: string[]; to: string[] }) {
         <li
           key={i}
           className={cx(
-            "rounded-md border px-2.5 py-1.5 text-[12px] leading-relaxed",
-            op.kind === "same" && "border-ink-100 bg-white text-ink-600",
-            op.kind === "add" && "border-brand-200 bg-brand-50 text-brand-800",
+            "rounded-lg px-2.5 py-1.5 text-[12px] leading-relaxed",
+            op.kind === "same" && "bg-surface text-ink-600",
+            op.kind === "add" && "bg-brand-50 text-brand-800 ring-1 ring-brand-200/60",
             op.kind === "del" &&
-              "border-danger-600/15 bg-danger-100/50 text-ink-400 line-through decoration-danger-600/40"
+              "bg-danger-100/50 text-ink-400 line-through decoration-danger-600/40"
           )}
         >
           <span
@@ -281,16 +290,17 @@ function BulletsDiff({ from, to }: { from: string[]; to: string[] }) {
   );
 }
 
-const STATUS_CHIP: Record<string, { text: string; cls: string }> = {
-  generating: { text: "生成中", cls: "bg-seal-100 text-seal-700" },
+const STATUS_CHIP: Record<string, { text: string; en: string; cls: string }> = {
+  generating: { text: "生成中", en: "Generating", cls: "bg-seal-100 text-seal-700" },
   success: {
     text: "待确认",
+    en: "Pending",
     cls: "bg-brand-50 text-brand-700 ring-1 ring-brand-200",
   },
-  failed: { text: "失败", cls: "bg-danger-100 text-danger-700" },
-  accepted: { text: "已接受", cls: "bg-brand-600 text-white" },
-  edited_accepted: { text: "编辑后接受", cls: "bg-brand-100 text-brand-800" },
-  rejected: { text: "已拒绝", cls: "bg-paper-200 text-ink-400" },
+  failed: { text: "失败", en: "Failed", cls: "bg-danger-100 text-danger-700" },
+  accepted: { text: "已接受", en: "Accepted", cls: "bg-brand-600 text-white" },
+  edited_accepted: { text: "编辑后接受", en: "Edited & Accepted", cls: "bg-brand-100 text-brand-800" },
+  rejected: { text: "已拒绝", en: "Rejected", cls: "bg-paper-200 text-ink-400" },
 };
 
 const AUDIT_CATEGORY_LABEL: Record<AuditCategory, string> = {
@@ -406,6 +416,8 @@ export function AIPanel({
     "privacy",
     "toast"
   );
+  const uiLang = useUiLang();
+  const t = useT();
   const [panelMode, setPanelMode] = useState<"suggestions" | "audit">(
     "suggestions"
   );
@@ -482,6 +494,7 @@ export function AIPanel({
     else locateBlockInEditor(sectionId, blockId);
   };
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [trustSession, setTrustSession] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<{
     title: string;
@@ -504,7 +517,7 @@ export function AIPanel({
   const blockTitle = active
     ? active.original.title ||
       active.original.description.slice(0, 16) ||
-      "该条目"
+      t("该条目", "This entry")
     : "";
 
   const startEdit = (s: Suggestion) => {
@@ -549,21 +562,21 @@ export function AIPanel({
         </p>
       )}
       <div className="flex items-center justify-between px-4 pb-2 pt-3.5">
-        <h2 className="flex items-center gap-1.5 text-[12px] font-bold  text-ink-400">
-          <IconWand size={13} className="text-brand-600" /> AI 建议与体检
+        <h2 className="flex items-center gap-1.5 text-[12px] font-bold text-ink-400">
+          <IconWand size={13} className="text-brand-600" /> {t("AI 建议与体检", "AI & Audit")}
         </h2>
-        <div className="flex items-center gap-1 rounded-lg bg-paper-200 p-0.5 text-[11.5px]">
+        <div className="flex items-center gap-1 rounded-lg bg-subtle p-0.5 text-[11.5px]">
           <button
             type="button"
             onClick={() => setPanelMode("suggestions")}
             className={cx(
               "rounded-md px-2 py-0.5 font-medium transition",
               panelMode === "suggestions"
-                ? "bg-white text-ink-900 shadow-xs"
+                ? "bg-surface text-ink-900 shadow-xs"
                 : "text-ink-500 hover:text-ink-800"
             )}
           >
-            模块建议 ({list.length})
+            {t("模块建议", "Suggestions")} ({list.length})
           </button>
           <button
             type="button"
@@ -574,11 +587,11 @@ export function AIPanel({
             className={cx(
               "rounded-md px-2 py-0.5 font-medium transition",
               panelMode === "audit"
-                ? "bg-white text-ink-900 shadow-xs"
+                ? "bg-surface text-ink-900 shadow-xs"
                 : "text-ink-500 hover:text-ink-800"
             )}
           >
-            全简历体检
+            {t("全简历体检", "Audit")}
           </button>
         </div>
       </div>
@@ -587,7 +600,7 @@ export function AIPanel({
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
           <div className="mb-3 flex gap-2">
             <Btn variant="primary" className="h-8 flex-1" onClick={runAudit}>
-              <IconRefresh size={12} /> 一键全简历体检
+              <IconRefresh size={12} /> {t("一键全简历体检", "Run Full Audit")}
             </Btn>
             <Btn
               variant="outline"
@@ -595,23 +608,32 @@ export function AIPanel({
               disabled={auditAI.loading}
               onClick={() => runAuditAI(false)}
             >
-              <IconSpark size={12} /> {auditAI.loading ? "分析中…" : "AI 深度建议"}
+              <IconSpark size={12} />{" "}
+              {auditAI.loading ? t("分析中…", "Analyzing…") : t("AI 深度建议", "AI Deep Audit")}
             </Btn>
           </div>
 
           {auditReport && (
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3 rounded-xl border border-ink-200 bg-white p-3">
-                <ScoreRing score={auditReport.score} label="体检参考" />
+              <div className="soft-panel flex items-center gap-3 rounded-2xl p-3">
+                <ScoreRing score={auditReport.score} label={t("体检参考", "Audit Score")} />
                 <div className="min-w-0 flex-1 text-[12px] text-ink-600">
                   <p className="font-bold text-ink-800">
-                    共扫描 {auditReport.scannedBlocks} 个条目 ·{" "}
-                    {auditReport.scannedBullets} 条要点
+                    {t(
+                      `共扫描 ${auditReport.scannedBlocks} 个条目 · ${auditReport.scannedBullets} 条要点`,
+                      `Scanned ${auditReport.scannedBlocks} entries · ${auditReport.scannedBullets} bullets`
+                    )}
                   </p>
                   <p className="mt-1 text-ink-500">
                     {auditReport.total
-                      ? `发现 ${auditReport.total} 项可优化处，点击「定位到此处」可直接跳转编辑。`
-                      : "未发现时间线断层、动词重复、中英空格或量化缺失问题。"}
+                      ? t(
+                          `发现 ${auditReport.total} 项可优化处，点击「定位到此处」可直接跳转编辑。`,
+                          `Found ${auditReport.total} items to improve. Click Locate to jump to any item.`
+                        )
+                      : t(
+                          "未发现时间线断层、动词重复、中英空格或量化缺失问题。",
+                          "No timeline gaps, repeated verbs, spacing issues, or missing metrics found."
+                        )}
                   </p>
                 </div>
               </div>
@@ -658,7 +680,7 @@ export function AIPanel({
                     {auditAI.suggestions.map((item, idx) => (
                       <li
                         key={idx}
-                        className="rounded-lg bg-white p-2.5 text-[12px] shadow-2xs"
+                        className="rounded-xl bg-surface p-2.5 text-[12px] shadow-2xs"
                       >
                         <p className="text-ink-800">{item.advice}</p>
                         {item.example && (
@@ -691,7 +713,7 @@ export function AIPanel({
                   .map((issue) => (
                     <li
                       key={issue.id}
-                      className="rounded-xl border border-ink-200 bg-white p-3 text-[12px]"
+                      className="soft-panel rounded-2xl p-3 text-[12px]"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span
@@ -743,14 +765,17 @@ export function AIPanel({
           <Empty
             accent="ai"
             icon={<IconSpark size={20} />}
-            title="还没有 AI 建议"
-            desc="在经历条目上点击「优化这段」，选择需要的动作。生成的建议需确认后才会写入简历。"
+            title={t("还没有 AI 建议", "No AI suggestions yet")}
+            desc={t(
+              "在经历条目上点击「优化这段」，选择需要的动作。生成的建议需确认后才会写入简历。",
+              'Click "Refine" on any entry to generate a suggestion. Nothing is written until you approve.'
+            )}
           />
         )}
 
         {active && (
           <div className="anim-fade-up flex flex-col gap-2.5" key={active.id}>
-            <div className="relative overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
+            <div className="soft-panel relative overflow-hidden rounded-2xl">
               {/* AI 流标识：光谱左边框（3px），看到光谱 = AI 在工作 */}
               <span
                 aria-hidden
@@ -767,10 +792,13 @@ export function AIPanel({
                     STATUS_CHIP[active.resolution ?? active.status].cls
                   )}
                 >
-                  {STATUS_CHIP[active.resolution ?? active.status].text}
+                  {t(
+                    STATUS_CHIP[active.resolution ?? active.status].text,
+                    STATUS_CHIP[active.resolution ?? active.status].en
+                  )}
                 </span>
                 <span className="text-[12.5px] font-bold text-ink-800">
-                  {ACTION_LABELS[active.action].label}
+                  {actionLabel(active.action, ACTION_LABELS[active.action].label, uiLang)}
                 </span>
                 <span className="truncate text-[11.5px] text-ink-400">
                   · {blockTitle}
@@ -784,8 +812,10 @@ export function AIPanel({
                 <p className="flex items-center gap-1.5 text-[12px] text-ink-400">
                   <span className="sp-dot" />
                   <IconLock size={11} />
-                  {active.engine === "rules" ? "规则检查" : "模型写作"}：
-                  {active.provider_name} · 不直接覆盖原文
+                  {active.engine === "rules"
+                    ? t("规则检查", "Rule check")
+                    : t("模型写作", "AI model")}
+                  ：{active.provider_name} · {t("不直接覆盖原文", "Does not overwrite original")}
                 </p>
 
                 {active.status === "generating" && (
@@ -859,7 +889,10 @@ export function AIPanel({
                       blockContent(active.original) ===
                         blockContent(active.suggested) && (
                         <p className="rounded bg-paper-100 p-2 text-[12px]">
-                          原文无需改动；以下仅为检查提示，可编辑补充真实事实。
+                          {t(
+                            "原文无需改动；以下仅为检查提示，可编辑补充真实事实。",
+                            "No changes needed; review tips below and edit to add concrete metrics."
+                          )}
                         </p>
                       )}
                     {active.explanation && (
@@ -917,7 +950,7 @@ export function AIPanel({
                         {active.original.description !==
                           active.suggested.description && (
                           <div>
-                            <p className="field-label">描述对比</p>
+                            <p className="field-label">{t("描述对比", "Description Diff")}</p>
                             <BulletsDiff
                               from={[active.original.description]}
                               to={[active.suggested.description]}
@@ -928,7 +961,7 @@ export function AIPanel({
                           active.suggested.bullets.filter(Boolean).length >
                             0) && (
                           <div>
-                            <p className="field-label">要点 Diff</p>
+                            <p className="field-label">{t("要点 Diff", "Bullets Diff")}</p>
                             <BulletsDiff
                               from={active.original.bullets}
                               to={active.suggested.bullets}
@@ -994,21 +1027,21 @@ export function AIPanel({
                               }
                               onClick={() => accept(active)}
                             >
-                              <IconCheck size={13} /> 接受
+                              <IconCheck size={13} /> {t("接受", "Accept")}
                             </button>
                             <Btn
                               variant="outline"
                               className="h-8"
                               onClick={() => startEdit(active)}
                             >
-                              <IconEdit size={12} /> 编辑后接受
+                              <IconEdit size={12} /> {t("编辑后接受", "Edit & Accept")}
                             </Btn>
                             <Btn
                               variant="ghost"
                               className="h-8"
                               onClick={() => rejectSuggestion(active.id)}
                             >
-                              <IconX size={13} /> 拒绝
+                              <IconX size={13} /> {t("拒绝", "Reject")}
                             </Btn>
                           </>
                         ) : (
@@ -1017,7 +1050,7 @@ export function AIPanel({
                               className="cta-ai flex h-8 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-bold"
                               onClick={() => acceptEdited(active)}
                             >
-                              <IconCheck size={13} /> 接受编辑后的内容
+                              <IconCheck size={13} /> {t("接受编辑后的内容", "Apply Edits")}
                             </button>
                             <Btn
                               variant="ghost"
@@ -1027,7 +1060,7 @@ export function AIPanel({
                                 setDraft(null);
                               }}
                             >
-                              返回对比
+                              {t("返回对比", "Back to Diff")}
                             </Btn>
                           </>
                         )}
@@ -1041,7 +1074,7 @@ export function AIPanel({
                           className="mt-2 h-8"
                           onClick={() => undoSuggestion(active.id)}
                         >
-                          撤销本次接受
+                          {t("撤销本次接受", "Undo Applied Change")}
                         </Btn>
                       )}
                   </>
@@ -1051,7 +1084,7 @@ export function AIPanel({
 
             {list.length > 1 && (
               <div>
-                <p className="field-label px-1">历史记录</p>
+                <p className="field-label px-1">{t("历史记录", "History")}</p>
                 <ul className="flex flex-col gap-1">
                   {list.slice(0, 8).map((s) => (
                     <li key={s.id}>
@@ -1061,10 +1094,10 @@ export function AIPanel({
                           setEditing(false);
                         }}
                         className={cx(
-                          "flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition",
+                          "flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition",
                           s.id === active?.id
-                            ? "border-brand-300 bg-brand-50"
-                            : "border-transparent hover:border-ink-200 hover:bg-white"
+                            ? "bg-brand-50 ring-1 ring-brand-300/60"
+                            : "hover:bg-surface/80"
                         )}
                       >
                         <span
@@ -1073,13 +1106,16 @@ export function AIPanel({
                             STATUS_CHIP[s.resolution ?? s.status].cls
                           )}
                         >
-                          {STATUS_CHIP[s.resolution ?? s.status].text}
+                          {t(
+                            STATUS_CHIP[s.resolution ?? s.status].text,
+                            STATUS_CHIP[s.resolution ?? s.status].en
+                          )}
                         </span>
                         <span className="shrink-0 text-[11.5px] font-medium text-ink-700">
-                          {ACTION_LABELS[s.action].label}
+                          {actionLabel(s.action, ACTION_LABELS[s.action].label, uiLang)}
                         </span>
                         <span className="min-w-0 flex-1 truncate text-[12px] text-ink-400">
-                          {s.original.title || "条目"}
+                          {s.original.title || t("条目", "Entry")}
                         </span>
                         <span className="shrink-0 font-mono text-[9.5px] text-ink-500">
                           {fmtTime(s.created_at)}
@@ -1096,10 +1132,13 @@ export function AIPanel({
 
       {/* 底部隐私注脚（设计 §4.3-2）：AI 可控叙事，看到光谱 = AI */}
       {active && (
-        <div className="border-t border-line px-4 py-2.5">
+        <div className="bg-subtle/50 px-4 py-2.5">
           <p className="flex items-center gap-1.5 text-[10.5px] text-ink-400">
-            <span className="sp-dot" /> 规则检查与模型写作分别标注 ·
-            确认前不会改动原文
+            <span className="sp-dot" />{" "}
+            {t(
+              "规则检查与模型写作分别标注 · 确认前不会改动原文",
+              "Rule checks & AI drafts are labeled separately · Nothing is overwritten before approval"
+            )}
           </p>
         </div>
       )}
@@ -1109,7 +1148,10 @@ export function AIPanel({
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div
             className="anim-fade-in absolute inset-0 bg-ink-950/55"
-            onClick={() => confirmExternal(false)}
+            onClick={() => {
+              setTrustSession(false);
+              confirmExternal(false);
+            }}
           />
           <div className="anim-scale-in relative w-full max-w-sm rounded-xl bg-paper-25 p-5 shadow-2xl ring-1 ring-ink-900/10">
             <div className="flex items-start gap-3">
@@ -1130,15 +1172,44 @@ export function AIPanel({
                     「{pendingExternal.providerName}」
                   </strong>
                   （{pendingExternal.providerHost}
-                  ）进行处理。本次确认仅授权当前请求。
+                  ）进行处理。
                 </p>
               </div>
             </div>
+            <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-xl bg-subtle px-3 py-2 text-[12px] text-ink-600">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-brand-600"
+                checked={trustSession}
+                onChange={(e) => setTrustSession(e.target.checked)}
+              />
+              <span>
+                本次会话内不再询问「{pendingExternal.providerName}」
+                {queuedSuggestionCount > 0 && (
+                  <span className="block text-[11px] text-ink-400">
+                    当前队列还有 {queuedSuggestionCount} 条待生成，勾选后将连续处理；刷新页面后自动失效。
+                  </span>
+                )}
+              </span>
+            </label>
             <div className="mt-4 flex justify-end gap-2">
-              <Btn variant="ghost" onClick={() => confirmExternal(false)}>
+              <Btn
+                variant="ghost"
+                onClick={() => {
+                  setTrustSession(false);
+                  confirmExternal(false);
+                }}
+              >
                 取消，保持本地
               </Btn>
-              <Btn variant="seal" onClick={() => confirmExternal(true)}>
+              <Btn
+                variant="seal"
+                onClick={() => {
+                  const trust = trustSession;
+                  setTrustSession(false);
+                  confirmExternal(true, trust);
+                }}
+              >
                 确认发送
               </Btn>
             </div>
@@ -1167,6 +1238,7 @@ export function JDPanel({
     "privacy"
   );
   const jd = useApp((s) => s.jds[resume.id]);
+  const t = useT();
   const [raw, setRaw] = useState("");
   const [editingJD, setEditingJD] = useState(false);
   const [semanticState, setSemanticState] = useState<{
@@ -1257,20 +1329,23 @@ export function JDPanel({
   if (!jd || editingJD) {
     return (
       <div className="flex h-full flex-col px-4 pb-4 pt-3.5">
-        <h2 className="flex items-center gap-1.5 pb-2 text-[12px] font-bold  text-ink-400">
-          <IconTarget size={13} className="text-brand-600" /> 目标岗位 JD
+        <h2 className="flex items-center gap-1.5 pb-2 text-[12px] font-bold text-ink-400">
+          <IconTarget size={13} className="text-brand-600" /> {t("目标岗位 JD", "Target Job Description")}
         </h2>
         <p className="mb-2 text-[11.5px] leading-relaxed text-ink-400">
-          粘贴招聘
-          JD，系统将提取技能与关键词（本地规则解析，不发送给模型），并与简历做匹配分析。
+          {t(
+            "粘贴招聘 JD，系统将提取技能与关键词（本地规则解析，不发送给模型），并与简历做匹配分析。",
+            "Paste a job description to extract skills & keywords locally and analyze resume alignment."
+          )}
         </p>
         <textarea
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
           rows={10}
-          placeholder={
-            "高级前端工程师\n\n岗位职责：\n1. 负责…\n\n任职要求：\n1. 精通 React、TypeScript…"
-          }
+          placeholder={t(
+            "高级前端工程师\n\n岗位职责：\n1. 负责…\n\n任职要求：\n1. 精通 React、TypeScript…",
+            "Senior Frontend Engineer\n\nResponsibilities:\n1. Lead…\n\nRequirements:\n1. Proficient in React, TypeScript…"
+          )}
           className="field-input min-h-0 flex-1 resize-none leading-relaxed"
         />
         <div className="mt-2.5 flex gap-2">
@@ -1279,7 +1354,7 @@ export function JDPanel({
             className="h-8 flex-1"
             onClick={() => doParse(raw)}
           >
-            <IconTarget size={13} /> 解析 JD
+            <IconTarget size={13} /> {t("解析 JD", "Parse JD")}
           </Btn>
           <Btn
             variant="outline"
@@ -1287,18 +1362,19 @@ export function JDPanel({
             disabled={deepParsing}
             onClick={() => doDeepParse(raw, false)}
           >
-            <IconSpark size={13} /> {deepParsing ? "解析中…" : "AI 语义解析"}
+            <IconSpark size={13} />{" "}
+            {deepParsing ? t("解析中…", "Parsing…") : t("AI 语义解析", "AI Semantic")}
           </Btn>
           <Btn
             variant="outline"
             className="h-8"
             onClick={() => setRaw(SAMPLE_JD_TEXT)}
           >
-            填入示例
+            {t("填入示例", "Sample")}
           </Btn>
           {editingJD && (
             <Btn variant="ghost" onClick={() => setEditingJD(false)}>
-              取消修改
+              {t("取消修改", "Cancel")}
             </Btn>
           )}
         </div>
@@ -1389,7 +1465,7 @@ export function JDPanel({
           )}
         </div>
 
-        <div className="mb-3 rounded-lg border border-ink-200 bg-white p-2.5">
+        <div className="soft-panel mb-3 rounded-2xl p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1 text-[12px] font-bold text-ink-700">
               <IconSpark size={12} className="text-brand-600" />
@@ -1441,7 +1517,7 @@ export function JDPanel({
           onCancel={() => setJdPendingProvider(null)}
           onConfirm={() => doDeepParse(jd.raw_text, true)}
         />
-        <details className="mb-3 rounded-lg border border-line p-2">
+        <details className="soft-panel mb-3 rounded-2xl p-2.5">
           <summary className="cursor-pointer text-[12px] font-bold">
             JD 原句与简历依据
           </summary>
@@ -1503,7 +1579,7 @@ export function JDPanel({
           </div>
         ) : (
           <div className="anim-fade-up flex flex-col gap-3">
-            <details className="rounded-xl border border-ink-200 bg-white p-3.5">
+            <details className="soft-panel rounded-2xl p-3.5">
               <summary className="cursor-pointer text-[12px]">
                 查看规则数值（不代表岗位胜任度）
               </summary>
@@ -1563,12 +1639,12 @@ export function JDPanel({
             )}
 
             <div>
-              <p className="field-label">优化建议</p>
+              <p className="field-label">{t("优化建议", "Suggestions")}</p>
               <ul className="flex flex-col gap-1.5">
                 {report.suggestions.map((s, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-2 rounded-lg border border-ink-100 bg-white px-3 py-2 text-[11.5px] leading-relaxed text-ink-600"
+                    className="soft-panel flex items-start gap-2 rounded-xl px-3 py-2 text-[11.5px] leading-relaxed text-ink-600"
                   >
                     <span className="mt-0.5 font-mono text-[12px] font-bold text-brand-600">
                       {String(i + 1).padStart(2, "0")}
@@ -1581,14 +1657,14 @@ export function JDPanel({
 
             <div className="flex items-center justify-between">
               <span className="font-mono text-[12px] text-ink-500">
-                分析于 {timeAgo(report.computed_at)} · 本地规则引擎
+                {t(`分析于 ${timeAgo(report.computed_at)} · 本地规则引擎`, `Analyzed ${timeAgo(report.computed_at)} · Local rules`)}
               </span>
               <Btn
                 variant="ghost"
                 className="h-7 text-[11.5px]"
                 onClick={doMatch}
               >
-                <IconRefresh size={11} /> 重新分析
+                <IconRefresh size={11} /> {t("重新分析", "Re-analyze")}
               </Btn>
             </div>
           </div>
