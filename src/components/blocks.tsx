@@ -158,7 +158,7 @@ function RichField({
           <input
             ref={ref as RefObject<HTMLInputElement>}
             onSelect={(e) => selectionChanged(e.currentTarget)}
-            className={cx("field-input pr-8", mono && "font-mono")}
+            className={cx("field-input", selected && "pr-8", mono && "font-mono")}
             aria-label={label}
             value={value}
             placeholder={placeholder}
@@ -1647,24 +1647,24 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
       {resume.template_id === "academic_photo" && (
         <>
           <ImageUploadField
-            label="头像"
+            label={t("头像", "Photo")}
             url={resume.data.avatar_url}
             onFile={(file) =>
-              handleImage(file, (url) => setAvatar(resume.id, url), "头像")
+              handleImage(file, (url) => setAvatar(resume.id, url), t("头像", "Photo"))
             }
             onClear={() => setAvatar(resume.id, null)}
             rounded="rounded-lg"
             placeholder="?"
           />
           <ImageUploadField
-            label="校徽"
+            label={t("校徽", "School Badge")}
             url={resume.data.school_badge_url}
             onFile={(file) =>
-              handleImage(file, (url) => setSchoolBadge(resume.id, url), "校徽")
+              handleImage(file, (url) => setSchoolBadge(resume.id, url), t("校徽", "School Badge"))
             }
             onClear={() => setSchoolBadge(resume.id, null)}
             rounded="rounded-full"
-            placeholder="校"
+            placeholder={t("校", "U")}
           />
         </>
       )}

@@ -676,7 +676,7 @@ export default function Home() {
                     <div className="flex items-center gap-2.5 text-[12px] font-mono text-ink-500">
                       {problems.length > 0 && (
                         <span
-                          title={`${problems.length} 项待核对`}
+                          title={t(`${problems.length} 项待核对`, `${problems.length} to review`)}
                           className="inline-flex items-center gap-1 text-seal-600"
                         >
                           <span className="h-1.5 w-1.5 rounded-full bg-seal-500" />
@@ -685,7 +685,7 @@ export default function Home() {
                       )}
                       {appCount > 0 && (
                         <span
-                          title={`${appCount} 条投递记录`}
+                          title={t(`${appCount} 条投递记录`, `${appCount} applications`)}
                           className="inline-flex items-center gap-1 text-brand-600"
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -750,7 +750,7 @@ export default function Home() {
       {/* 工作台底部：面试跟进与投递进度图表模块 */}
       <InterviewProgressSection
         applications={app.applications}
-        today={nowISO().slice(0, 10)}
+        today={fmtDate(nowISO())}
         uiLang={uiLang}
         onOpenApplications={(dueOnly) => app.go({ name: "applications", dueOnly })}
       />

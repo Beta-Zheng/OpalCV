@@ -18,14 +18,19 @@ export const CORE_MODULES: { type: SectionType; label: string }[] = [
   { type: "education", label: "教育经历" },
   { type: "skills", label: "技能" },
 ];
-const hasText = (s: string) =>
+const hasText = (s?: string) =>
+  !!s &&
   !!stripHtml(s)
     .replace(/&nbsp;/g, " ")
     .trim();
 export function blockHasContent(b: Block): boolean {
-  return [b.title, b.subtitle, b.description, ...b.bullets, ...b.skills].some(
-    hasText
-  );
+  return [
+    b.title,
+    b.subtitle,
+    b.description,
+    ...(b.bullets ?? []),
+    ...(b.skills ?? []),
+  ].some(hasText);
 }
 export function sectionHasContent(s: Section): boolean {
   return s.visible && s.blocks.some((b) => b.visible && blockHasContent(b));

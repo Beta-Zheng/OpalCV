@@ -1079,13 +1079,16 @@ function ApplicationGantt({
     const endMs = Math.max(startMs, endRaw);
     const followMs = !isTerminal ? parseDayMs(a.follow_up_at) : null;
     const eventDots = (a.events ?? [])
-      .map((ev) => ({
-        id: ev.id,
-        ms: parseDayMs(ev.at),
-        status: ev.status,
-        note: ev.note,
-        date: fmtDate(ev.at),
-      }))
+      .map((ev) => {
+        const dStr = fmtDate(ev.at);
+        return {
+          id: ev.id,
+          ms: parseDayMs(dStr),
+          status: ev.status,
+          note: ev.note,
+          date: dStr,
+        };
+      })
       .filter((e): e is { id: string; ms: number; status: ApplicationStatus; note: string; date: string } => e.ms !== null);
 
     minMs = Math.min(minMs, startMs);
@@ -1100,11 +1103,15 @@ function ApplicationGantt({
   const pct = (ms: number) =>
     Math.min(100, Math.max(0, ((ms - rangeStart) / span) * 100));
 
+  const todayPct = pct(todayMs);
   const ticks = Array.from({ length: 6 }, (_, i) => {
     const ms = rangeStart + (span * i) / 5;
-    return fmtDate(new Date(ms).toISOString()).slice(5);
+    const tkPct = (i / 5) * 100;
+    return {
+      label: fmtDate(new Date(ms).toISOString()).slice(5),
+      nearToday: Math.abs(tkPct - todayPct) < 7,
+    };
   });
-  const todayPct = pct(todayMs);
 
   const barGradient = (s: ApplicationStatus) => {
     if (s === "offer") return "linear-gradient(90deg, #10B981, #34D399)";
@@ -1116,12 +1123,14 @@ function ApplicationGantt({
 
   return (
     <section className="soft-panel overflow-x-auto rounded-[24px] p-5">
-      <div className="min-w-[600px]">
-        <div className="grid grid-cols-[190px_1fr] gap-4 pb-3 text-[11.5px] font-medium text-ink-400">
+      <div className="min-w-[640px]">
+        <div className="grid grid-cols-[224px_1fr] gap-4 pb-3 text-[11.5px] font-medium text-ink-400">
           <span>{t("公司 · 职位", "Company · Role")}</span>
           <div className="flex justify-between font-mono">
             {ticks.map((tk, i) => (
-              <span key={i}>{tk}</span>
+              <span key={i} className={tk.nearToday ? "invisible" : ""}>
+                {tk.label}
+              </span>
             ))}
           </div>
         </div>
@@ -1131,7 +1140,7 @@ function ApplicationGantt({
           <div
             aria-hidden="true"
             className="pointer-events-none absolute bottom-0 top-0 z-10 border-l-[1.5px] border-dashed border-danger-600/70"
-            style={{ left: `calc(190px + 16px + (100% - 206px) * ${todayPct / 100})` }}
+            style={{ left: `calc(224px + 16px + (100% - 240px) * ${todayPct / 100})` }}
           >
             <span className="absolute -left-5 -top-6 rounded-full bg-danger-600 px-1.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap">
               {t("今天", "Today")}
@@ -1156,7 +1165,7 @@ function ApplicationGantt({
               return (
                 <div
                   key={a.id}
-                  className="grid grid-cols-[190px_1fr] items-center gap-4 py-3"
+                  className="grid grid-cols-[224px_1fr] items-center gap-4 py-3"
                 >
                   <button
                     type="button"
@@ -1164,11 +1173,16 @@ function ApplicationGantt({
                     className="min-w-0 text-left group"
                   >
                     <p className="truncate text-[13.5px] font-bold text-ink-900 group-hover:text-brand-700">
-                      {a.company} · {a.role}
+                      {a.company}
                     </p>
+                    {a.role && (
+                      <p className="mt-0.5 truncate text-[11.5px] text-ink-500">
+                        {a.role}
+                      </p>
+                    )}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <StatusBadge status={a.status} />
-                      <span className="font-mono text-[11px] text-ink-400">
+                      <span className="text-[11px] text-ink-400 tabular-nums">
                         {t(`${days} 天`, `${days}d`)}
                       </span>
                       {due && (
@@ -1180,24 +1194,18 @@ function ApplicationGantt({
                   </button>
 
                   <div className="relative h-6 rounded-full bg-surface/65">
-                    {/* 持续进度条 */}
+                    {/* 持续进度条（无内部冗余文字，避免与里程碑节点碰撞） */}
                     <button
                       type="button"
                       onClick={() => onQuick(a)}
                       title={`${a.company} · ${a.role} (${appStatusLabel(a.status, APPLICATION_LABELS[a.status], uiLang)} · ${t(`${days} 天`, `${days}d`)})`}
-                      className="absolute top-1 flex h-4 items-center overflow-hidden rounded-full px-2 text-[10px] font-semibold text-white shadow-xs transition-transform hover:scale-y-110"
+                      className="absolute top-1.5 flex h-3 items-center rounded-full shadow-xs transition-transform hover:scale-y-125"
                       style={{
                         left: `${left}%`,
                         width: `${width}%`,
                         background: barGradient(a.status),
                       }}
-                    >
-                      <span className="truncate">
-                        {width > 12
-                          ? `${appStatusLabel(a.status, APPLICATION_LABELS[a.status], uiLang)} · ${t(`${days}天`, `${days}d`)}`
-                          : ""}
-                      </span>
-                    </button>
+                    />
 
                     {/* 历史事件节点 */}
                     {eventDots.map((ev) => (
