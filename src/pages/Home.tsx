@@ -1499,11 +1499,15 @@ function InterviewProgressSection({
                   const stStyle = APP_STATUS_STYLE[app.status] || APP_STATUS_STYLE.saved;
                   const stLabel =
                     uiLang === "en" ? EN_APP_LABELS[app.status] : APPLICATION_LABELS[app.status];
+                  const latestAt =
+                    app.events && app.events.length > 0
+                      ? fmtDate(app.events[app.events.length - 1].at)
+                      : fmtDate(app.updated_at);
                   const dateTag = isDue
                     ? uiLang === "en"
                       ? `Due ${app.follow_up_at.slice(5)}`
                       : `待跟进 ${app.follow_up_at.slice(5)}`
-                    : (app.applied_at || fmtDate(app.updated_at) || "").slice(5);
+                    : (latestAt || app.applied_at || "").slice(5);
                   return (
                     <button
                       key={app.id}

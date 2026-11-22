@@ -1633,7 +1633,7 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2 px-3 py-3">
+    <div className="grid grid-cols-1 gap-x-3 gap-y-2.5 px-3 py-3 @xl:grid-cols-2">
       {fields.map((f) => (
         <RichField
           key={f.key}

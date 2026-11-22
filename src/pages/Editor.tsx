@@ -990,7 +990,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                       onClickCapture={syncPreview}
                       onFocusCapture={syncPreview}
                       className={cx(
-                        "editor-content mx-auto flex w-full min-w-0 flex-col gap-4 pb-10",
+                        "editor-content @container mx-auto flex w-full min-w-0 flex-col gap-4 pb-10",
                         editorMode === "content" && "max-w-3xl"
                       )}
                     >

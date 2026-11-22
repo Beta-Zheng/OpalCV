@@ -926,9 +926,11 @@ function ApplicationPipeline({
                         )}
                       </div>
                       {latestNote && (
-                        <p className="mt-2 line-clamp-2 rounded-xl bg-subtle/80 px-2.5 py-1.5 text-[11.5px] leading-relaxed text-ink-600">
-                          {latestNote}
-                        </p>
+                        <div className="mt-2 rounded-xl bg-subtle/80 px-2.5 py-1.5">
+                          <p className="line-clamp-2 text-[11.5px] leading-relaxed text-ink-600">
+                            {latestNote}
+                          </p>
+                        </div>
                       )}
                       <div className="mt-2.5 flex items-center justify-between gap-1">
                         {lane.next ? (
@@ -1065,17 +1067,18 @@ function ApplicationGantt({
   let maxMs = todayMs + 4 * DAY;
 
   const rows = list.map((a) => {
+    const isSavedOnly = a.status === "saved" && !a.applied_at;
     const startMs =
       parseDayMs(a.applied_at) ??
-      parseDayMs(a.events?.[0]?.at) ??
-      parseDayMs(a.updated_at) ??
+      parseDayMs(fmtDate(a.events?.[0]?.at || a.updated_at)) ??
       todayMs;
     const isTerminal = TERMINAL_STATUSES.includes(a.status);
-    const endRaw = isTerminal
-      ? parseDayMs(a.events?.[a.events.length - 1]?.at) ??
-        parseDayMs(a.updated_at) ??
-        startMs
-      : Math.max(todayMs, startMs);
+    const endRaw = isSavedOnly
+      ? startMs
+      : isTerminal
+        ? parseDayMs(fmtDate(a.events?.[a.events.length - 1]?.at || a.updated_at)) ??
+          startMs
+        : Math.max(todayMs, startMs);
     const endMs = Math.max(startMs, endRaw);
     const followMs = !isTerminal ? parseDayMs(a.follow_up_at) : null;
     const eventDots = (a.events ?? [])
@@ -1182,9 +1185,11 @@ function ApplicationGantt({
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <StatusBadge status={a.status} />
-                      <span className="text-[11px] text-ink-400 tabular-nums">
-                        {t(`${days} 天`, `${days}d`)}
-                      </span>
+                      {(a.status !== "saved" || !!a.applied_at) && (
+                        <span className="text-[11px] text-ink-400 tabular-nums">
+                          {t(`${days} 天`, `${days}d`)}
+                        </span>
+                      )}
                       {due && (
                         <span className="chip resume-badge-copy rounded-full px-1.5 py-0 text-[10px] font-medium">
                           {t("待跟进", "Due")}
