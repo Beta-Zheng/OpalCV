@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { enterTransition, exitTransition, PresenceLayer } from "./motion-layer";
 import { cx } from "../lib/utils";
-import { useApp, flushSave } from "../lib/store";
+import { useApp, flushSave, forceSave, reloadFromStorage } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { IconAlert, IconCheck, IconInfo, IconX } from "./icons";
 
@@ -548,13 +548,38 @@ export function SaveIndicator({ compact = false }: { compact?: boolean } = {}) {
     prev.current = lastSavedAt;
   }, [lastSavedAt]);
 
+  if (saveStatus === "conflict")
+    return (
+      <span role="alert" className="inline-flex flex-wrap items-center gap-1.5 text-[11px] text-amber-600">
+        <span>
+          {compact
+            ? t("已在其他窗口修改", "Edited in another tab")
+            : t("内容已在其他标签页更新：", "Updated in another tab: ")}
+        </span>
+        <button
+          type="button"
+          className="font-semibold underline hover:text-amber-700"
+          onClick={() => void reloadFromStorage()}
+        >
+          {t("载入最新", "Load latest")}
+        </button>
+        <span aria-hidden="true">·</span>
+        <button
+          type="button"
+          className="underline hover:text-amber-700"
+          onClick={() => void forceSave()}
+        >
+          {t("覆盖保存", "Keep mine")}
+        </button>
+      </span>
+    );
   if (saveStatus === "error")
     return (
       <span role="alert" className="text-[11px] text-danger-700">
         {compact
           ? t("保存失败 ", "Save failed ")
-          : t("保存失败，请下载备份并检查浏览器存储空间 ", "Save failed — download a backup and check storage ")}
-        <button className="underline" onClick={flushSave}>
+          : t("保存失败，请先下载备份并检查浏览器存储空间 ", "Save failed — download a backup and check storage ")}
+        <button type="button" className="underline" onClick={() => void flushSave()}>
           {t("重试保存", "Retry")}
         </button>
       </span>

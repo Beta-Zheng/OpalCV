@@ -217,7 +217,7 @@ describe("版本与投递记录", () => {
     state.saveApplication(applicationFixture());
     const linked = useApp.getState().applications[0].snapshot_id;
     for (let i = 0; i < 25; i++)
-      state.captureSnapshot("resume_test", `编辑${i}`);
+      state.captureSnapshot("resume_test", `编辑${i}`, "auto");
     expect(useApp.getState().snapshots.some((s) => s.id === initial)).toBe(
       true
     );
@@ -615,5 +615,75 @@ describe('栏目与副本的兼容性', () => {
     expect(imported.copy_source_id).not.toBe('resume_test');
     expect(useApp.getState().resumes.some(r=>r.id===imported.copy_source_id)).toBe(true);
     expect(imported.page_limit).toBe(2);
+  });
+  it('手动快照不会被大量自动快照挤掉（L2）', () => {
+    const app = useApp.getState();
+    const manualId = app.captureSnapshot('resume_test', '投递前手动保存', 'manual');
+    expect(manualId).toBeTruthy();
+    for (let i = 0; i < 25; i++) {
+      app.captureSnapshot('resume_test', `自动保存 ${i}`, 'auto');
+    }
+    const snaps = useApp.getState().snapshots.filter((s) => s.resume_id === 'resume_test');
+    expect(snaps.some((s) => s.id === manualId)).toBe(true);
+    expect(snaps.filter((s) => s.kind === 'auto').length).toBeLessThanOrEqual(20);
+  });
+  it('恢复快照保留历史建议记录与全局外部信任授权（L4）', () => {
+    const app = useApp.getState();
+    const snapId = app.captureSnapshot('resume_test', '里程碑', 'manual')!;
+    useApp.setState((s) => ({
+      trustedExternalIds: ['custom-provider'],
+      suggestions: [
+        ...s.suggestions,
+        {
+          id: 'sug_done',
+          resume_id: 'resume_test',
+          section_id: 'section_test',
+          block_id: 'block_test',
+          action: 'polish',
+          status: 'success',
+          resolution: 'accepted',
+          engine: 'rules',
+          provider_name: '本地规则',
+          matched_keywords: [],
+          warnings: [],
+          original: currentBlock(),
+          suggested: { ...currentBlock(), description: '已润色内容' },
+          created_at: new Date().toISOString(),
+        },
+      ],
+    }));
+    expect(useApp.getState().restoreSnapshot(snapId)).toBe(true);
+    expect(useApp.getState().trustedExternalIds).toContain('custom-provider');
+    expect(useApp.getState().suggestions.some((s) => s.id === 'sug_done')).toBe(true);
+  });
+  it('接受 AI 建议时保留自定义的要点符号开关（L5）', () => {
+    const app = useApp.getState();
+    app.patchBlock('resume_test', 'section_test', 'block_test', {
+      bullets: ['第一条', '第二条'],
+      bullet_marks: [true, false],
+    });
+    const orig = currentBlock();
+    useApp.setState((s) => ({
+      suggestions: [
+        ...s.suggestions,
+        {
+          id: 'sug_marks',
+          resume_id: 'resume_test',
+          section_id: 'section_test',
+          block_id: 'block_test',
+          action: 'polish',
+          status: 'success',
+          engine: 'rules',
+          provider_name: '本地规则',
+          matched_keywords: [],
+          warnings: [],
+          original: orig,
+          suggested: { ...orig, bullets: ['优化后的第一条', '优化后的第二条'] },
+          created_at: new Date().toISOString(),
+        },
+      ],
+    }));
+    expect(useApp.getState().acceptSuggestion('sug_marks')).toBe(true);
+    expect(currentBlock().bullet_marks).toEqual([true, false]);
   });
 });

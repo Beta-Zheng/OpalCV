@@ -81,10 +81,11 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-/** 将图片文件读取为 base64 Data URL；超过 maxBytes 时拒绝 */
+/** 将图片文件读取为 Data URL；大图自动压缩缩放（长边 ≤ maxDim，JPEG 0.85），避免手机原图被拒或撑大导出文件 */
 export function fileToDataUrl(
   file: File,
-  maxBytes = 2 * 1024 * 1024
+  maxBytes = 20 * 1024 * 1024,
+  maxDim = 600
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -96,7 +97,56 @@ export function fileToDataUrl(
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const rawUrl = reader.result as string;
+      // 非浏览器 DOM 或 SVG / 小图直接返回，保留 PNG 透明背景（如校徽）
+      if (
+        typeof document === "undefined" ||
+        typeof Image === "undefined" ||
+        file.type === "image/svg+xml" ||
+        (file.size <= 160 * 1024 && file.type === "image/png")
+      ) {
+        resolve(rawUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const { naturalWidth: w, naturalHeight: h } = img;
+          if (!w || !h) {
+            resolve(rawUrl);
+            return;
+          }
+          const scale = Math.min(1, maxDim / Math.max(w, h));
+          const tw = Math.max(1, Math.round(w * scale));
+          const th = Math.max(1, Math.round(h * scale));
+          // 尺寸和体积都足够小则不二次编码
+          if (scale === 1 && file.size <= 220 * 1024) {
+            resolve(rawUrl);
+            return;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = tw;
+          canvas.height = th;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(rawUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, tw, th);
+          const outMime = file.type === "image/png" ? "image/png" : "image/jpeg";
+          const compressed = canvas.toDataURL(
+            outMime,
+            outMime === "image/jpeg" ? 0.85 : undefined
+          );
+          resolve(compressed.length < rawUrl.length ? compressed : rawUrl);
+        } catch {
+          resolve(rawUrl);
+        }
+      };
+      img.onerror = () => resolve(rawUrl);
+      img.src = rawUrl;
+    };
     reader.onerror = () => reject(new Error("读取图片失败"));
     reader.readAsDataURL(file);
   });

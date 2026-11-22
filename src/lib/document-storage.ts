@@ -7,9 +7,20 @@ export interface PackedDocument {
   records: Map<string, unknown>;
   assets: Map<string, string>;
 }
+export class StorageConflictError extends Error {
+  constructor() {
+    super("Storage revision conflict");
+    this.name = "StorageConflictError";
+  }
+}
+
 export interface DocumentBackend {
   read(name: string): Promise<PackedDocument | null>;
-  write(name: string, document: PackedDocument): Promise<void>;
+  write(
+    name: string,
+    document: PackedDocument,
+    options?: { force?: boolean }
+  ): Promise<void>;
   remove(name: string): Promise<void>;
 }
 
@@ -152,18 +163,32 @@ export function indexedDocumentBackend(): DocumentBackend {
             ),
           };
     },
-    async write(name, document) {
+    async write(name, document, options) {
       const db = await database;
       const tx = db.transaction(["manifest", "records", "assets"], "readwrite");
-      const done = transactionDone(tx);
+      let conflicted = false;
+      let writtenRevision = revision + 1;
+      const done = new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onabort = () =>
+          reject(
+            conflicted
+              ? new StorageConflictError()
+              : (tx.error ?? new Error("Storage transaction aborted"))
+          );
+        tx.onerror = () => reject(tx.error);
+      });
       const expected = revision;
       const head = tx.objectStore("manifest").get(name);
       head.onsuccess = () => {
+        const remoteRevision = head.result?.revision ?? 0;
         // Detect edits in another tab instead of silently overwriting them.
-        if ((head.result?.revision ?? 0) !== expected) {
+        if (!options?.force && remoteRevision !== expected) {
+          conflicted = true;
           tx.abort();
           return;
         }
+        writtenRevision = Math.max(expected, remoteRevision) + 1;
         // Issue mutations inside IDB callbacks to keep the transaction alive in every browser.
         for (const storeName of ["records", "assets"] as const) {
           const store = tx.objectStore(storeName);
@@ -177,12 +202,21 @@ export function indexedDocumentBackend(): DocumentBackend {
           };
         }
         tx.objectStore("manifest").put(
-          { revision: expected + 1, body: document.manifest },
+          { revision: writtenRevision, body: document.manifest },
           name
         );
       };
       await done;
-      revision = expected + 1;
+      revision = writtenRevision;
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const ch = new BroadcastChannel("opalcv-storage");
+          ch.postMessage({ type: "saved", name, revision: writtenRevision });
+          ch.close();
+        }
+      } catch {
+        /* BroadcastChannel is optional. */
+      }
     },
     async remove(name) {
       const db = await database;
@@ -210,10 +244,10 @@ export function createDocumentStorage<T extends object>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let blocked = false;
   let working: Promise<void> | null = null;
-  const flush = (): Promise<void> => {
+  const flush = (options?: { force?: boolean }): Promise<void> => {
     clearTimeout(timer);
     timer = undefined;
-    if (working) return working.then(() => (pending ? flush() : undefined));
+    if (working) return working.then(() => (pending ? flush(options) : undefined));
     if (!pending) return Promise.resolve();
     if (blocked) {
       onStatus("error");
@@ -223,7 +257,7 @@ export function createDocumentStorage<T extends object>(
     pending = null;
     working = (async () => {
       try {
-        await backend.write(current.name, await packDocument(current.value));
+        await backend.write(current.name, await packDocument(current.value), options);
         // Delete legacy only after the new transaction has committed.
         try {
           legacy().removeItem(current.name);
@@ -231,9 +265,9 @@ export function createDocumentStorage<T extends object>(
           /* IDB remains authoritative. */
         }
         onStatus(pending ? "saving" : "saved");
-      } catch {
+      } catch (err) {
         if (!pending) pending = current;
-        onStatus("error");
+        onStatus(err instanceof StorageConflictError ? "conflict" : "error");
       } finally {
         working = null;
       }
@@ -305,6 +339,12 @@ export function createDocumentStorage<T extends object>(
   return {
     storage,
     flush,
+    forceSave: () => flush({ force: true }),
+    discardPending: () => {
+      clearTimeout(timer);
+      timer = undefined;
+      pending = null;
+    },
     allowRecovery: () => {
       blocked = false;
     },

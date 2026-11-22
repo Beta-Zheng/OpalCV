@@ -299,9 +299,15 @@ const buffered = storageFactory<BackupData & { externalCallCount: number }>(
     return { ...data, externalCallCount: count };
   }
 );
-export const flushSave = buffered.flush;
+export const flushSave = () => buffered.flush();
+export const forceSave = () =>
+  "forceSave" in buffered ? buffered.forceSave() : buffered.flush();
+export const reloadFromStorage = async () => {
+  if ("discardPending" in buffered) buffered.discardPending();
+  await useApp.persist.rehydrate();
+  useApp.setState({ saveStatus: "saved" });
+};
 if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", flushSave);
   window.addEventListener("pagehide", () => {
     saveAutomaticVersions();
     void flushSave();
@@ -309,7 +315,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", (event) => {
     saveAutomaticVersions();
     void flushSave();
-    if (["saving", "error"].includes(useApp.getState().saveStatus)) {
+    if (["saving", "error", "conflict"].includes(useApp.getState().saveStatus)) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -320,6 +326,23 @@ if (typeof window !== "undefined") {
       void flushSave();
     }
   });
+  try {
+    if (typeof BroadcastChannel !== "undefined") {
+      const ch = new BroadcastChannel("opalcv-storage");
+      ch.onmessage = (event) => {
+        if (event.data?.type !== "saved") return;
+        const st = useApp.getState().saveStatus;
+        if (st === "saving" || st === "conflict") {
+          useApp.setState({ saveStatus: "conflict" });
+        } else {
+          // 当前标签页无未保存修改时，自动同步最新数据以刷新本地 revision
+          void reloadFromStorage();
+        }
+      };
+    }
+  } catch {
+    /* BroadcastChannel is optional. */
+  }
 }
 
 function mapSection(
@@ -605,14 +628,15 @@ export const useApp = create<AppState>()(
         };
         set((s) => {
           const linked = new Set(s.applications.map((a) => a.snapshot_id));
-          let recent = 0;
+          let recentAuto = 0;
           return {
             snapshots: [snapshot, ...s.snapshots].filter(
               (x) =>
                 x.resume_id !== id ||
                 x.kind === "initial" ||
+                x.kind === "manual" ||
                 linked.has(x.id) ||
-                ++recent <= 20
+                ++recentAuto <= 20
             ),
           };
         });
@@ -627,7 +651,7 @@ export const useApp = create<AppState>()(
           return false;
         suggestionQueue = [];
         queueEpoch++;
-        get().captureSnapshot(snapshot.resume_id, "恢复前自动保存");
+        get().captureSnapshot(snapshot.resume_id, "恢复前自动保存", "auto");
         const copy = structuredClone(snapshot.resume);
         copy.archived_at = get().resumes.find(
           (r) => r.id === copy.id
@@ -646,9 +670,10 @@ export const useApp = create<AppState>()(
           resumes: s.resumes.map((r) => (r.id === copy.id ? copy : r)),
           jds,
           pendingExternal: null,
-      trustedExternalIds: [],
           queuedSuggestionCount: 0,
-          suggestions: s.suggestions.filter((s) => s.resume_id !== copy.id),
+          suggestions: s.suggestions.filter(
+            (x) => !(x.resume_id === copy.id && x.status === "generating")
+          ),
         }));
         return true;
       },
@@ -1215,10 +1240,19 @@ export const useApp = create<AppState>()(
           return false;
         }
         const content = edited ?? sug.suggested;
+        const patch = blockPatch(content);
+        const nextBulletMarks =
+          current.bullet_marks && Array.isArray(patch.bullets)
+            ? patch.bullets.length === current.bullet_marks.length
+              ? [...current.bullet_marks]
+              : current.bullet_marks.some((m) => m === false)
+                ? patch.bullets.map((_, i) => current.bullet_marks?.[i] ?? true)
+                : undefined
+            : undefined;
         const applied = {
           ...current,
-          ...blockPatch(content),
-          bullet_marks: undefined,
+          ...patch,
+          bullet_marks: nextBulletMarks,
         };
         set((s) => ({
           ...withResume(s, sug.resume_id, (r) =>

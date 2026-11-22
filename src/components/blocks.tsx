@@ -1,6 +1,7 @@
 import {
   Fragment,
   useEffect,
+  useId,
   useState,
   useRef,
   type ReactNode,
@@ -1541,7 +1542,8 @@ function ImageUploadField({
   rounded: string;
   placeholder: string;
 }) {
-  const id = `img-${label}`;
+  const id = useId();
+  const t = useT();
   return (
     <div className="block min-w-0">
       <span className="field-label">{label}</span>
@@ -1565,14 +1567,18 @@ function ImageUploadField({
             htmlFor={id}
             className="inline-flex cursor-pointer items-center gap-1 text-[12px] font-medium text-brand-600 hover:text-brand-700"
           >
-            <IconUpload size={12} /> 上传
+            <IconUpload size={12} /> {t("上传", "Upload")}
           </label>
           <input
             id={id}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp"
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onFile(f);
+              e.target.value = "";
+            }}
           />
           {url && (
             <button
@@ -1580,7 +1586,7 @@ function ImageUploadField({
               onClick={onClear}
               className="text-left text-[12px] text-danger-600 hover:text-danger-700"
             >
-              清除
+              {t("清除", "Clear")}
             </button>
           )}
         </div>
