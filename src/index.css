@@ -1066,3 +1066,19 @@ html[data-theme="dark"] .resume-badge-archived {
 .editor-section-current { position: relative; }
 .editor-section-current::before { content: ""; position: absolute; left: -7px; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--color-brand-400); pointer-events: none; }
 .editor-content .field-label { font-size: 13px; }
+
+/* ---------- 首页 16 周求职活跃热力图（Opal 蓝紫渐进色阶，浅/深色自适应） ---------- */
+.heat-0 { background-color: rgb(148 163 184 / 0.17); }
+.heat-1 { background-color: #BAE6FD; }
+.heat-2 { background-color: #818CF8; }
+.heat-3 { background-color: #6366F1; }
+.heat-4 { background-color: #9333EA; }
+.heat-future { background-color: rgb(148 163 184 / 0.06); }
+.heat-today { box-shadow: 0 0 0 1.5px var(--color-brand-500); }
+
+html[data-theme="dark"] .heat-0 { background-color: rgb(148 163 184 / 0.11); }
+html[data-theme="dark"] .heat-1 { background-color: rgb(56 189 248 / 0.34); }
+html[data-theme="dark"] .heat-2 { background-color: rgb(99 102 241 / 0.56); }
+html[data-theme="dark"] .heat-3 { background-color: rgb(129 140 248 / 0.84); }
+html[data-theme="dark"] .heat-4 { background-color: #A855F7; }
+html[data-theme="dark"] .heat-future { background-color: rgb(148 163 184 / 0.04); }

@@ -25,7 +25,7 @@ import {
 import { Btn, Confirm, GlassSelect, Modal, ModalHeader } from "../components/ui";
 import Logo from "../components/logo";
 import ImportReview from "../components/import-review";
-import { applicationStats, TERMINAL_STATUSES } from "../lib/applications";
+import { APPLICATION_LABELS, applicationStats, TERMINAL_STATUSES } from "../lib/applications";
 import { audienceLabel, templateNameLabel, UI_COPY, useT, useUiLang } from "../lib/i18n";
 import ResumeThumbnail from "../components/resume-thumbnail";
 import {
@@ -1280,6 +1280,44 @@ function EmptyTypewriter() {
   );
 }
 
+const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const EN_APP_LABELS: Record<import("../types").ApplicationStatus, string> = {
+  saved: "Saved",
+  applied: "Applied",
+  interview: "Interview",
+  offer: "Offer",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+  closed: "Closed",
+};
+
+const APP_STATUS_STYLE: Record<
+  import("../types").ApplicationStatus,
+  { dot: string; badge: string }
+> = {
+  saved: { dot: "bg-slate-400", badge: "bg-slate-500/10 text-ink-600" },
+  applied: { dot: "bg-sky-500", badge: "bg-sky-500/12 text-sky-600" },
+  interview: { dot: "bg-indigo-500", badge: "bg-indigo-500/12 text-indigo-600" },
+  offer: { dot: "bg-emerald-500", badge: "bg-emerald-500/12 text-emerald-600" },
+  rejected: { dot: "bg-rose-400", badge: "bg-rose-500/10 text-rose-600" },
+  withdrawn: { dot: "bg-slate-400", badge: "bg-slate-500/10 text-ink-500" },
+  closed: { dot: "bg-slate-400", badge: "bg-slate-500/10 text-ink-500" },
+};
+
+function toLocalYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseYmdLocal(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return new Date();
+  return new Date(y, m - 1, d);
+}
+
 function InterviewProgressSection({
   applications,
   today,
@@ -1293,58 +1331,127 @@ function InterviewProgressSection({
 }) {
   const stats = applicationStats(applications, today);
   const total = applications.length;
-  const maxStage = Math.max(1, stats.submitted, stats.interviews, stats.offers, stats.followups);
-  const maxWeek = Math.max(1, ...stats.weeks.map((w) => w.count));
-  const interviewRate = stats.submitted ? Math.round((stats.interviews / stats.submitted) * 100) : 0;
-  const offerRate = stats.submitted ? Math.round((stats.offers / stats.submitted) * 100) : 0;
 
-  const stages = [
-    {
-      key: "submitted",
-      label: uiLang === "en" ? "Applied" : "已投递",
-      count: stats.submitted,
-      gradient: "linear-gradient(90deg, #38BDF8 0%, #6366F1 100%)",
-      dot: "bg-sky-500",
-      dueOnly: false,
-    },
-    {
-      key: "interview",
-      label: uiLang === "en" ? "Interviewing" : "面试中",
-      count: stats.interviews,
-      gradient: "linear-gradient(90deg, #6366F1 0%, #A855F7 100%)",
-      dot: "bg-indigo-500",
-      dueOnly: false,
-    },
-    {
-      key: "offer",
-      label: uiLang === "en" ? "Offers" : "收到 Offer",
-      count: stats.offers,
-      gradient: "linear-gradient(90deg, #10B981 0%, #34D399 100%)",
-      dot: "bg-emerald-500",
-      dueOnly: false,
-    },
-    {
-      key: "followup",
-      label: uiLang === "en" ? "Follow-ups Due" : "待跟进",
-      count: stats.followups,
-      gradient: "linear-gradient(90deg, #F59E0B 0%, #FB923C 100%)",
-      dot: "bg-amber-500",
-      dueOnly: true,
-    },
-  ];
+  // 统计每日求职活跃度（投递日期 + 每次状态/反馈事件日期）
+  const dayCounts = new Map<string, number>();
+  for (const app of applications) {
+    if (app.applied_at) {
+      const k = app.applied_at.slice(0, 10);
+      dayCounts.set(k, (dayCounts.get(k) || 0) + 1);
+    }
+    for (const ev of app.events || []) {
+      const k = fmtDate(ev.at);
+      if (k) dayCounts.set(k, (dayCounts.get(k) || 0) + 1);
+    }
+  }
+
+  // 生成近 24 周（约半年，固定 11px 精致小格，周一至周日）热力图网格
+  const WEEKS = 24;
+  const todayDate = parseYmdLocal(today);
+  const dow = (todayDate.getDay() + 6) % 7; // 0 = Mon .. 6 = Sun
+  const startMonday = new Date(todayDate);
+  startMonday.setDate(todayDate.getDate() - dow - (WEEKS - 1) * 7);
+
+  type HeatCell = {
+    ymd: string;
+    count: number;
+    level: 0 | 1 | 2 | 3 | 4;
+    isFuture: boolean;
+    isToday: boolean;
+  };
+  const columns: HeatCell[][] = [];
+  const monthMarkers: (string | null)[] = [];
+  let activeDays = 0;
+  let totalActions = 0;
+  let prevMonth = -1;
+  let lastLabelCol = -4;
+
+  for (let w = 0; w < WEEKS; w++) {
+    const col: HeatCell[] = [];
+    let colMonthLabel: string | null = null;
+    for (let r = 0; r < 7; r++) {
+      const cur = new Date(startMonday);
+      cur.setDate(startMonday.getDate() + w * 7 + r);
+      const ymd = toLocalYmd(cur);
+      const isFuture = ymd > today;
+      const isToday = ymd === today;
+      const count = isFuture ? 0 : (dayCounts.get(ymd) || 0);
+      if (!isFuture && count > 0) {
+        activeDays += 1;
+        totalActions += count;
+      }
+      const level: 0 | 1 | 2 | 3 | 4 =
+        count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count <= 4 ? 3 : 4;
+      if (r === 0) {
+        const m = cur.getMonth();
+        if (m !== prevMonth) {
+          if (w - lastLabelCol >= 3) {
+            colMonthLabel = uiLang === "en" ? EN_MONTHS[m] : `${m + 1}月`;
+            lastLabelCol = w;
+          }
+          prevMonth = m;
+        }
+      }
+      col.push({ ymd, count, level, isFuture, isToday });
+    }
+    columns.push(col);
+    monthMarkers.push(colMonthLabel);
+  }
+
+  // 挑出最需要关注的 4 条投递（待跟进优先 → 面试中 → Offer → 已投递 → 最近更新）
+  const priorityOf = (a: import("../types").Application) => {
+    const isDue = !!a.follow_up_at && a.follow_up_at <= today && !TERMINAL_STATUSES.includes(a.status);
+    if (isDue) return 0;
+    if (a.status === "interview") return 1;
+    if (a.status === "offer") return 2;
+    if (a.status === "applied") return 3;
+    if (a.status === "saved") return 4;
+    return 5;
+  };
+  const spotlightApps = [...applications]
+    .sort((a, b) => {
+      const pa = priorityOf(a);
+      const pb = priorityOf(b);
+      if (pa !== pb) return pa - pb;
+      return (b.updated_at || "").localeCompare(a.updated_at || "");
+    })
+    .slice(0, 4);
+  const activeCount = applications.filter((a) => !TERMINAL_STATUSES.includes(a.status)).length;
+
+  const weekdayLabels = uiLang === "en" ? ["M", "", "W", "", "F", "", "S"] : ["一", "", "三", "", "五", "", "日"];
 
   return (
     <section aria-label={uiLang === "en" ? "Interview Progress" : "面试跟进"}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[17px] font-bold tracking-tight text-ink-900">
             {uiLang === "en" ? "Interview Progress" : "面试跟进"}
           </h2>
+          {total > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] tabular-nums">
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2.5 py-0.5 font-medium text-sky-600">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+                {uiLang === "en" ? `Applied ${stats.submitted}` : `已投递 ${stats.submitted}`}
+              </span>
+              {stats.interviews > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 px-2.5 py-0.5 font-medium text-indigo-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                  {uiLang === "en" ? `Interview ${stats.interviews}` : `面试 ${stats.interviews}`}
+                </span>
+              )}
+              {stats.offers > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-0.5 font-medium text-emerald-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {`Offer ${stats.offers}`}
+                </span>
+              )}
+            </div>
+          )}
           {stats.followups > 0 && (
             <button
               type="button"
               onClick={() => onOpenApplications(true)}
-              className="rounded-full bg-amber-500/12 px-2.5 py-0.5 text-[11.5px] font-medium text-amber-600 transition-colors hover:bg-amber-500/20"
+              className="rounded-full bg-amber-500/12 px-2.5 py-0.5 text-[11.5px] font-medium text-amber-600 transition-colors hover:bg-amber-500/20 tabular-nums"
             >
               {uiLang === "en"
                 ? `${stats.followups} due`
@@ -1362,112 +1469,182 @@ function InterviewProgressSection({
         </button>
       </div>
 
-      <div className="soft-panel grid gap-6 rounded-[26px] p-5 sm:p-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        {/* 左侧：投递漏斗进度条 */}
-        <div className="flex flex-col justify-between gap-3.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[12.5px] font-medium text-ink-500">
-              {uiLang === "en" ? "Pipeline Funnel" : "投递漏斗进度"}
-            </span>
-            <span className="font-mono text-[12px] text-ink-400">
-              {total > 0
-                ? uiLang === "en"
-                  ? `${total} tracked`
-                  : `共 ${total} 条记录`
-                : uiLang === "en"
-                  ? "No applications yet"
-                  : "暂无投递记录"}
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {stages.map((st) => {
-              const pct = st.count > 0 ? Math.max(8, Math.round((st.count / maxStage) * 100)) : 0;
-              return (
-                <button
-                  key={st.key}
-                  type="button"
-                  onClick={() => onOpenApplications(st.dueOnly)}
-                  className="group block w-full text-left"
-                >
-                  <div className="mb-1 flex items-center justify-between text-[12.5px]">
-                    <span className="inline-flex items-center gap-2 font-medium text-ink-700 group-hover:text-ink-900">
-                      <span className={`h-2 w-2 rounded-full ${st.dot}`} />
-                      {st.label}
-                    </span>
-                    <span className="font-mono text-[12.5px] font-semibold text-ink-800">
-                      {st.count}
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-ink-200/45">
-                    <div
-                      className="h-full rounded-full transition-all duration-500 ease-out"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundImage: st.gradient,
-                      }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 右侧：近 8 周投递节奏柱状图 + 转化率指标 */}
-        <div className="flex flex-col justify-between gap-4 rounded-[20px] bg-surface/70 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[12.5px] font-medium text-ink-500">
-              {uiLang === "en" ? "8-Week Activity" : "近 8 周投递节奏"}
-            </span>
-            <div className="flex items-center gap-2 text-[11.5px]">
-              <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-700">
-                {uiLang === "en" ? `Interview ${interviewRate}%` : `面试率 ${interviewRate}%`}
+      <div className="soft-panel rounded-[24px] p-4 sm:p-5">
+        {/* 左右等重双卡（左：最近推进 / 待跟进清单；右：近 24 周 11px 紧凑热力图） */}
+        <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_auto]">
+          {/* 左卡：最近跟进与活跃岗位（顶部自然对齐，无多余留白） */}
+          <div className="flex flex-col gap-2.5 rounded-[18px] bg-surface/75 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[12.5px] font-medium text-ink-500">
+                {uiLang === "en" ? "Active Pipeline" : "最近推进"}
               </span>
-              <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 font-medium text-emerald-600">
-                {uiLang === "en" ? `Offer ${offerRate}%` : `Offer ${offerRate}%`}
+              <span className="text-[11.5px] text-ink-400 tabular-nums">
+                {total > 0
+                  ? uiLang === "en"
+                    ? `${activeCount} active · ${total} total`
+                    : `${activeCount} 个进行中 · 共 ${total} 条`
+                  : uiLang === "en"
+                    ? "No records yet"
+                    : "暂无记录"}
               </span>
             </div>
+
+            {spotlightApps.length > 0 ? (
+              <div className="space-y-1.5">
+                {spotlightApps.map((app) => {
+                  const isDue =
+                    !!app.follow_up_at &&
+                    app.follow_up_at <= today &&
+                    !TERMINAL_STATUSES.includes(app.status);
+                  const stStyle = APP_STATUS_STYLE[app.status] || APP_STATUS_STYLE.saved;
+                  const stLabel =
+                    uiLang === "en" ? EN_APP_LABELS[app.status] : APPLICATION_LABELS[app.status];
+                  const dateTag = isDue
+                    ? uiLang === "en"
+                      ? `Due ${app.follow_up_at.slice(5)}`
+                      : `待跟进 ${app.follow_up_at.slice(5)}`
+                    : (app.applied_at || fmtDate(app.updated_at) || "").slice(5);
+                  return (
+                    <button
+                      key={app.id}
+                      type="button"
+                      onClick={() => onOpenApplications(isDue)}
+                      className="group flex w-full items-center justify-between gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-subtle/80"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${stStyle.dot}`} />
+                        <span className="truncate text-[13px] font-semibold text-ink-800 group-hover:text-ink-900">
+                          {app.company || (uiLang === "en" ? "Untitled" : "未命名公司")}
+                        </span>
+                        {app.role && (
+                          <span className="truncate text-[12px] text-ink-400">
+                            · {app.role}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${stStyle.badge}`}
+                        >
+                          {stLabel}
+                        </span>
+                        {dateTag && (
+                          <span
+                            className={`text-[11px] tabular-nums ${
+                              isDue ? "font-medium text-amber-600" : "text-ink-400"
+                            }`}
+                          >
+                            {dateTag}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onOpenApplications(false)}
+                className="flex flex-1 items-center justify-between rounded-xl bg-subtle/50 px-3.5 py-3 text-left transition-colors hover:bg-subtle"
+              >
+                <span className="text-[12.5px] text-ink-500">
+                  {uiLang === "en"
+                    ? "Track your applications, interviews, and follow-up dates here."
+                    : "记录第一条投递与面试进度，在这里随时掌握跟进节奏。"}
+                </span>
+                <IconArrowRight size={14} className="ml-2 shrink-0 text-ink-400" />
+              </button>
+            )}
           </div>
 
-          <div
-            className="grid h-[104px] grid-cols-8 items-end gap-2 pt-2"
-            role="img"
-            aria-label={uiLang === "en" ? "Weekly application activity chart" : "近 8 周投递数量柱状图"}
-          >
-            {stats.weeks.map((week, idx) => {
-              const barPct = week.count > 0 ? Math.max(18, Math.round((week.count / maxWeek) * 100)) : 8;
-              const isCurrent = idx === stats.weeks.length - 1;
-              return (
-                <div
-                  key={week.from}
-                  title={`${week.from.slice(5)} ~ ${week.to.slice(5)} · ${week.count}`}
-                  className="group flex h-full flex-col items-center justify-end gap-1.5"
-                >
-                  <div className="flex w-full flex-1 items-end justify-center">
-                    <div
-                      className="w-full max-w-[20px] rounded-full transition-all duration-300 group-hover:opacity-90"
-                      style={{
-                        height: `${barPct}%`,
-                        backgroundImage:
-                          week.count > 0
-                            ? "linear-gradient(180deg, #38BDF8 0%, #6366F1 60%, #A855F7 100%)"
-                            : undefined,
-                        backgroundColor:
-                          week.count === 0 ? "rgb(148 163 184 / 0.22)" : undefined,
-                      }}
-                    />
-                  </div>
-                  <span
-                    className={`font-mono text-[10px] ${
-                      isCurrent ? "font-semibold text-brand-600" : "text-ink-400"
-                    }`}
-                  >
-                    {isCurrent ? (uiLang === "en" ? "Now" : "本周") : `W${idx + 1}`}
-                  </span>
+          {/* 右卡：近 24 周紧凑热力图（固定 11px 方块） */}
+          <div className="flex flex-col justify-between gap-2.5 rounded-[18px] bg-surface/75 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[12.5px] font-medium text-ink-500">
+                {uiLang === "en" ? "24-Week Activity" : "近 24 周活跃度"}
+              </span>
+              <span className="text-[11px] text-ink-400 tabular-nums">
+                {uiLang === "en"
+                  ? `${activeDays}d active · ${totalActions} updates`
+                  : `活跃 ${activeDays} 天 · ${totalActions} 次动态`}
+              </span>
+            </div>
+
+            <div
+              className="overflow-x-auto pb-0.5"
+              role="img"
+              aria-label={
+                uiLang === "en"
+                  ? `24-week job search activity heatmap with ${activeDays} active days`
+                  : `近 24 周求职活跃热力图，共活跃 ${activeDays} 天`
+              }
+            >
+              <div className="inline-block">
+                {/* 月份刻度 */}
+                <div className="mb-1 flex items-center gap-[3px] pl-[18px]">
+                  {monthMarkers.map((label, idx) => (
+                    <span
+                      key={idx}
+                      className="relative h-3 w-[11px] shrink-0 overflow-visible whitespace-nowrap text-[9.5px] leading-3 text-ink-400"
+                    >
+                      {label || ""}
+                    </span>
+                  ))}
                 </div>
-              );
-            })}
+
+                {/* 星期标签 + 24×7 精致热力方块 */}
+                <div className="flex items-start gap-1.5">
+                  <div className="flex w-3 shrink-0 flex-col gap-[3px] text-right text-[9px] leading-[11px] text-ink-400">
+                    {weekdayLabels.map((lbl, idx) => (
+                      <span key={idx} className="h-[11px]">
+                        {lbl}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-[3px]">
+                    {columns.map((col, wIdx) => (
+                      <div key={wIdx} className="flex flex-col gap-[3px]">
+                        {col.map((cell) => {
+                          const heatClass = cell.isFuture
+                            ? "heat-future"
+                            : `heat-${cell.level}`;
+                          const tip = cell.isFuture
+                            ? cell.ymd
+                            : cell.count > 0
+                              ? uiLang === "en"
+                                ? `${cell.ymd} · ${cell.count} action${cell.count > 1 ? "s" : ""}`
+                                : `${cell.ymd} · ${cell.count} 次投递/进展`
+                              : uiLang === "en"
+                                ? `${cell.ymd} · No activity`
+                                : `${cell.ymd} · 无记录`;
+                          return (
+                            <div
+                              key={cell.ymd}
+                              title={tip}
+                              className={`h-[11px] w-[11px] rounded-[2.5px] transition-transform duration-150 ${heatClass} ${
+                                cell.isToday ? "heat-today" : ""
+                              } ${!cell.isFuture ? "hover:scale-125" : ""}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 底部图例：与 11px 方块同尺寸 */}
+            <div className="flex items-center justify-end gap-1 text-[10px] text-ink-400">
+              <span>{uiLang === "en" ? "Less" : "少"}</span>
+              <span className="heat-0 h-[10px] w-[10px] rounded-[2.5px]" />
+              <span className="heat-1 h-[10px] w-[10px] rounded-[2.5px]" />
+              <span className="heat-2 h-[10px] w-[10px] rounded-[2.5px]" />
+              <span className="heat-3 h-[10px] w-[10px] rounded-[2.5px]" />
+              <span className="heat-4 h-[10px] w-[10px] rounded-[2.5px]" />
+              <span>{uiLang === "en" ? "More" : "多"}</span>
+            </div>
           </div>
         </div>
       </div>

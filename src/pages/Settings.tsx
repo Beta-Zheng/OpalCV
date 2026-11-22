@@ -18,11 +18,12 @@ import { Btn, Confirm, GlassSelect, InfoTip, Toggle, Modal, ModalHeader } from "
 import {
   IconAlert,
   IconCheck,
+  IconChevronDown,
+  IconChevronUp,
   IconDatabase,
   IconDownload,
   IconEye,
   IconEyeOff,
-  IconLock,
   IconRefresh,
   IconShield,
   IconTrash,
@@ -88,8 +89,11 @@ export default function Settings() {
   const [gistToken, setGistToken] = useState("");
   const [gistId, setGistId] = useState(initialSyncConfig?.gistId ?? "");
   const [gistFilename, setGistFilename] = useState(
-    initialSyncConfig?.gistFilename || "touchstone-cv-backup.enc.json"
+    initialSyncConfig?.gistFilename || "opalcv-backup.enc.json"
   );
+  const [syncOpen, setSyncOpen] = useState(false);
+  const hasSyncConfigured =
+    syncTarget === "webdav" ? !!webdavUrl.trim() : !!gistId.trim();
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -151,10 +155,10 @@ export default function Settings() {
   const backup = () => {
     const payload = createBackup(app);
     downloadText(
-      `ai-resume-backup-${fmtDateCompact(nowISO())}.json`,
+      `opalcv-backup-${fmtDateCompact(nowISO())}.json`,
       JSON.stringify(payload, null, 2)
     );
-    app.toast("ok", "备份文件已下载（含全部简历与配置）");
+    app.toast("ok", t("备份文件已下载（含全部简历与配置）", "Backup downloaded (all resumes & settings)"));
     const date = nowISO();
     setLastBackup(date);
     try {
@@ -248,7 +252,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-12 pt-7 sm:px-6">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 px-4 pb-14 pt-7 sm:px-6">
       <header className="anim-fade-up flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <h1 className="text-[28px] font-bold tracking-tight text-ink-900">
@@ -263,69 +267,85 @@ export default function Settings() {
             )}
           />
         </div>
-        <span className="chip rounded-full bg-subtle px-3 py-1 font-mono text-[12px] text-ink-600">
-          {storageKB} KB{storageEstimate?.usage ? ` · ${t("站点", "Origin")} ${(storageEstimate.usage / 1024 / 1024).toFixed(1)} MB` : ""}
+        <span className="chip rounded-full bg-subtle px-3 py-1 text-[12px] text-ink-600 tabular-nums">
+          {storageKB} KB · IndexedDB
+          {storageEstimate?.usage
+            ? ` · ${t("站点", "Origin")} ${(storageEstimate.usage / 1024 / 1024).toFixed(1)} MB`
+            : ""}
         </span>
       </header>
 
       {app.saveStatus === "error" && (
         <p
           role="alert"
-          className="rounded-2xl bg-danger-100 p-3.5 text-[12px] text-danger-700"
+          className="rounded-2xl bg-danger-100 p-3.5 text-[12.5px] text-danger-700"
         >
           {t("本机数据读取或保存失败，请先保管已有备份并检查浏览器存储空间。", "Local read/write failed. Keep your backup safe and check browser storage quota.")}
         </p>
       )}
 
-      {/* 顶部 4 列等高粉彩概览条 */}
-      <section aria-label={t("本地数据概览", "Local storage overview")} className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        {[
-          [t("简历", "Resumes"), resumes.length, t("份", ""), "pastel-violet"],
-          ["JD", Object.keys(jds).length, t("份", ""), "pastel-indigo"],
-          [t("AI 建议", "AI Suggestions"), suggestions.length, t("条", ""), "pastel-mint"],
-          [t("模型配置", "Models"), models.length, t("个", ""), "pastel-amber"],
-        ].map(([label, n, unit, bg]) => (
-          <div key={String(label)} className={`rounded-[22px] px-5 py-4 ${bg}`}>
-            <p className="text-[12.5px] font-medium text-ink-500">{label}</p>
-            <p className="mt-1.5 text-[26px] font-bold leading-none tabular-nums text-ink-900">
-              {n}
-              {unit && (
-                <span className="ml-1 text-[12px] font-medium text-ink-500">
-                  {unit}
-                </span>
-              )}
-            </p>
-          </div>
-        ))}
-      </section>
-
-      {/* 中部 2 列等高核心功能卡 */}
-      <div className="grid items-stretch gap-4 md:grid-cols-2">
-        {/* 备份与恢复 */}
-        <section className="soft-panel flex flex-col justify-between gap-4 rounded-[24px] p-5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <IconDatabase size={16} className="text-brand-600" />
-              <h2 className="text-[15px] font-bold text-ink-900">{t("备份与恢复", "Backup & Restore")}</h2>
-              <InfoTip
-                content={t(
-                  "备份 JSON 包含全部简历、快照与投递记录（不含 API Key），恢复时可选择合并或替换。",
-                  "Backup JSON includes all resumes, snapshots, and applications (excluding API keys). Choose merge or replace on restore."
-                )}
-              />
+      {/* 第一层：核心 · 本地存储与备份 */}
+      <section aria-label={t("本地存储与备份", "Local storage & backup")} className="space-y-2.5">
+        <h2 className="px-1 text-[12px] font-semibold tracking-wider text-ink-400 uppercase">
+          {t("本地存储与备份", "Local Storage & Backup")}
+        </h2>
+        <div className="soft-panel space-y-4 rounded-[24px] p-5 sm:p-6">
+          {/* 存储概览与备份状态 */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+                <IconDatabase size={18} />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[15px] font-bold text-ink-900">
+                    {t("本机数据备份", "Local Backup")}
+                  </span>
+                  <InfoTip
+                    content={t(
+                      "备份 JSON 包含全部简历、版本快照与投递记录（不含 API Key），恢复时可选择合并或覆盖。",
+                      "Backup JSON includes all resumes, snapshots, and applications (excluding API keys). Choose merge or replace on restore."
+                    )}
+                  />
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-500 tabular-nums">
+                  <span className="rounded-full bg-surface/85 px-2 py-0.5">
+                    {t(`简历 ${resumes.length}`, `${resumes.length} resumes`)}
+                  </span>
+                  <span className="rounded-full bg-surface/85 px-2 py-0.5">
+                    {t(`投递 ${app.applications.length}`, `${app.applications.length} apps`)}
+                  </span>
+                  <span className="rounded-full bg-surface/85 px-2 py-0.5">
+                    {t(`快照 ${app.snapshots.length}`, `${app.snapshots.length} snapshots`)}
+                  </span>
+                  <span className="rounded-full bg-surface/85 px-2 py-0.5">
+                    {`JD ${Object.keys(jds).length}`}
+                  </span>
+                </div>
+              </div>
             </div>
-            <span className="text-[12px] text-ink-400">
-              {lastBackup ? `${t("已备份", "Backed up")} ${new Date(lastBackup).toLocaleDateString()}` : t("未备份", "Not backed up")}
+            <span
+              className={cx(
+                "rounded-full px-2.5 py-1 text-[11.5px] font-medium tabular-nums",
+                lastBackup
+                  ? "bg-emerald-500/12 text-emerald-600"
+                  : "bg-amber-500/12 text-amber-600"
+              )}
+            >
+              {lastBackup
+                ? `${t("上次备份", "Backed up")} ${new Date(lastBackup).toLocaleDateString()}`
+                : t("尚未备份", "Not backed up")}
             </span>
           </div>
 
+          {/* 主操作：完整备份 / 恢复 */}
           <div className="flex flex-wrap gap-2.5">
-            <Btn variant="primary" className="flex-1" onClick={backup}>
+            <Btn variant="primary" className="cta-ai rounded-full px-5" onClick={backup}>
               <IconDownload size={14} /> {t("下载完整备份", "Download Full Backup")}
             </Btn>
             <Btn
               variant="outline"
-              className="flex-1"
+              className="rounded-full px-5"
               onClick={() => importRef.current?.click()}
             >
               <IconUpload size={14} /> {t("从备份恢复", "Restore Backup")}
@@ -343,51 +363,69 @@ export default function Settings() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <GlassSelect
-              ariaLabel={t("选择单份备份简历", "Select single resume")}
-              className="min-w-0 flex-1"
-              placeholder={t("选择单份简历…", "Choose a resume…")}
-              value={singleId}
-              onChange={setSingleId}
-              options={resumes.map((r) => ({ value: r.id, label: r.title }))}
-            />
-            <Btn
-              size="sm"
-              disabled={!singleId}
-              onClick={() =>
-                downloadText(
-                  `resume-${singleId}.json`,
-                  JSON.stringify(createResumeBackup(app, singleId), null, 2)
-                )
-              }
-            >
-              {t("单份导出", "Export One")}
-            </Btn>
-          </div>
-        </section>
-
-        {/* 数据隐私与安全开关 */}
-        <section className="soft-panel flex flex-col justify-between gap-4 rounded-[24px] p-5">
-          <div className="flex items-center gap-2">
-            <IconLock size={16} className="text-brand-600" />
-            <h2 className="text-[15px] font-bold text-ink-900">{t("数据隐私", "Privacy")}</h2>
-            <InfoTip
-              content={t(
-                "默认不上传任何数据、不发送遥测、不请求外部服务；开启外部模型后每次外发仍需确认。",
-                "No uploads, telemetry, or external calls by default. External AI calls still ask for confirmation when enabled."
-              )}
-            />
-          </div>
-
-          <div className="flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
-            <span className="flex items-center gap-2 text-[13.5px] font-medium text-ink-800">
-              <IconShield
-                size={15}
-                className={privacy.allowExternal ? "text-seal-600" : "text-brand-600"}
+          {/* 次级操作：单份简历独立导出 */}
+          {resumes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2.5 rounded-2xl bg-surface/75 px-3.5 py-2.5">
+              <span className="text-[12px] font-medium text-ink-500">
+                {t("单份导出", "Single Resume")}
+              </span>
+              <GlassSelect
+                ariaLabel={t("选择单份备份简历", "Select single resume")}
+                className="min-w-[180px] flex-1"
+                placeholder={t("选择单份简历…", "Choose a resume…")}
+                value={singleId}
+                onChange={setSingleId}
+                options={resumes.map((r) => ({ value: r.id, label: r.title }))}
               />
-              {t("允许外部模型", "Allow External Models")}
-            </span>
+              <Btn
+                size="sm"
+                className="rounded-full"
+                disabled={!singleId}
+                onClick={() =>
+                  downloadText(
+                    `opalcv-resume-${singleId}.json`,
+                    JSON.stringify(createResumeBackup(app, singleId), null, 2)
+                  )
+                }
+              >
+                {t("导出 JSON", "Export JSON")}
+              </Btn>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 第二层：偏好与高级 · 隐私与跨设备同步 */}
+      <section aria-label={t("隐私与跨设备同步", "Privacy & cloud sync")} className="space-y-2.5">
+        <h2 className="px-1 text-[12px] font-semibold tracking-wider text-ink-400 uppercase">
+          {t("隐私与跨设备同步", "Privacy & Cloud Sync")}
+        </h2>
+        <div className="soft-panel space-y-2.5 rounded-[24px] p-3">
+          {/* 紧凑设置行 1：允许外部模型 */}
+          <div className="flex items-center justify-between gap-4 rounded-[18px] bg-surface/80 px-4 py-3.5">
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                className={cx(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                  privacy.allowExternal
+                    ? "bg-amber-500/12 text-amber-600"
+                    : "bg-brand-50 text-brand-600"
+                )}
+              >
+                <IconShield size={16} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold text-ink-900">
+                  {t("允许外部模型", "Allow External Models")}
+                </p>
+                <p className="mt-0.5 text-[12px] text-ink-500">
+                  {t(
+                    "默认本地隐私模式、零遥测；开启后外部 AI 调用前仍会逐次确认。",
+                    "Local-first with zero telemetry by default. External AI calls still ask before sending."
+                  )}
+                </p>
+              </div>
+            </div>
             <Toggle
               checked={privacy.allowExternal}
               onChange={(v) => {
@@ -401,252 +439,284 @@ export default function Settings() {
             />
           </div>
 
-          <div className="flex items-center justify-between text-[12px] text-ink-500">
-            <span>{t("本地隐私模式 · 零遥测", "Local-first · Zero telemetry")}</span>
-            <span className="font-mono text-ink-400">IndexedDB</span>
-          </div>
-        </section>
-      </div>
+          {/* 紧凑设置行 2：加密云端同步（默认折叠，按需展开） */}
+          <div className="rounded-[18px] bg-surface/80">
+            <button
+              type="button"
+              aria-expanded={syncOpen}
+              onClick={() => setSyncOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-3 rounded-[18px] px-4 py-3.5 text-left transition-colors hover:bg-surface"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/12 text-indigo-600">
+                  <IconRefresh size={16} />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[14px] font-semibold text-ink-900">
+                      {t("加密云端同步", "Encrypted Cloud Sync")}
+                    </span>
+                    <span className="rounded-full bg-subtle px-2 py-0.5 text-[10.5px] font-medium text-ink-500">
+                      AES-GCM
+                    </span>
+                    {hasSyncConfigured && (
+                      <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10.5px] font-medium text-emerald-600">
+                        {syncTarget === "webdav"
+                          ? t("已配置 WebDAV", "WebDAV ready")
+                          : t("已配置 Gist", "Gist ready")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[12px] text-ink-500">
+                    {t(
+                      "高级选项 · 支持 WebDAV 或私有 GitHub Gist，密钥仅驻留内存不落盘。",
+                      "Advanced · Sync via WebDAV or private GitHub Gist; credentials stay in memory only."
+                    )}
+                  </p>
+                </div>
+              </div>
+              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-ink-500">
+                {syncOpen ? t("收起", "Collapse") : t("配置", "Configure")}
+                {syncOpen ? <IconChevronUp size={15} /> : <IconChevronDown size={15} />}
+              </span>
+            </button>
 
-      {/* 加密云端同步 */}
-      <section
-        className="soft-panel anim-fade-up rounded-[24px] p-5"
-        style={{ animationDelay: "0.12s" }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <IconRefresh size={16} className="text-brand-600" />
-            <h2 className="text-[15px] font-bold text-ink-900">
-              {t("加密云端同步", "Encrypted Cloud Sync")}
-            </h2>
-            <InfoTip
-              content={t(
-                "上传前在本地使用 AES-GCM 加密完整备份 JSON；Token、密码与加密口令仅驻留内存，绝不写入磁盘。",
-                "Encrypts the full backup JSON locally with AES-GCM before upload. Tokens and passphrases stay in memory only."
-              )}
-            />
-          </div>
-          <div className="liquid-glass relative flex rounded-full p-1">
-            {(
-              [
-                ["webdav", "WebDAV"],
-                ["gist", "GitHub Gist"],
-              ] as const
-            ).map(([k, label]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  setSyncTarget(k);
-                  setSyncStatus(null);
-                }}
-                className={cx(
-                  "rounded-full px-3.5 py-1 text-[12px] transition-all",
-                  syncTarget === k
-                    ? "glass-lens font-semibold"
-                    : "text-ink-500 hover:text-ink-900"
+            {syncOpen && (
+              <div className="px-4 pb-4 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
+                  <span className="text-[12px] text-ink-500">
+                    {t("同步目标", "Sync Target")}
+                  </span>
+                  <div className="liquid-glass relative flex rounded-full p-1">
+                    {(
+                      [
+                        ["webdav", "WebDAV"],
+                        ["gist", "GitHub Gist"],
+                      ] as const
+                    ).map(([k, label]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => {
+                          setSyncTarget(k);
+                          setSyncStatus(null);
+                        }}
+                        className={cx(
+                          "rounded-full px-3.5 py-1 text-[12px] transition-all",
+                          syncTarget === k
+                            ? "glass-lens font-semibold"
+                            : "text-ink-500 hover:text-ink-900"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block md:col-span-2">
+                    <span className="field-label">{t("同步加密口令", "Sync Passphrase")}</span>
+                    <div className="liquid-input relative flex items-center rounded-full px-4 py-2">
+                      <input
+                        type={showSyncPassphrase ? "text" : "password"}
+                        className="w-full bg-transparent pr-7 font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
+                        value={syncPassphrase}
+                        onChange={(e) => setSyncPassphrase(e.target.value)}
+                        placeholder={t("输入加密上传与解密恢复口令…", "Enter passphrase for AES-GCM encryption…")}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+                        onClick={() => setShowSyncPassphrase((v) => !v)}
+                        aria-label={t("显示/隐藏同步密码", "Show or hide passphrase")}
+                      >
+                        {showSyncPassphrase ? (
+                          <IconEyeOff size={14} />
+                        ) : (
+                          <IconEye size={14} />
+                        )}
+                      </button>
+                    </div>
+                  </label>
+
+                  {syncTarget === "webdav" ? (
+                    <>
+                      <label className="block md:col-span-2">
+                        <span className="field-label">WebDAV URL</span>
+                        <input
+                          type="url"
+                          className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
+                          value={webdavUrl}
+                          onChange={(e) => setWebdavUrl(e.target.value)}
+                          placeholder="https://dav.example.com/backups/opalcv.enc.json"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="field-label">{t("用户名（可选）", "Username (optional)")}</span>
+                        <input
+                          type="text"
+                          className="liquid-input w-full rounded-full px-4 py-2 text-[13px] text-ink-900 placeholder:text-ink-400"
+                          value={webdavUser}
+                          onChange={(e) => setWebdavUser(e.target.value)}
+                          placeholder={t("WebDAV 用户名", "WebDAV username")}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="field-label">{t("密码（可选）", "Password (optional)")}</span>
+                        <input
+                          type="password"
+                          className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
+                          value={webdavPass}
+                          onChange={(e) => setWebdavPass(e.target.value)}
+                          placeholder={t("WebDAV 密码", "WebDAV password")}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <label className="block md:col-span-2">
+                        <span className="field-label">{t("GitHub Token（gist 权限）", "GitHub Token (gist scope)")}</span>
+                        <input
+                          type="password"
+                          className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
+                          value={gistToken}
+                          onChange={(e) => setGistToken(e.target.value)}
+                          placeholder="ghp_… / github_pat_…"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="field-label">{t("Gist ID（留空自动新建）", "Gist ID (blank to create)")}</span>
+                        <input
+                          type="text"
+                          className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
+                          value={gistId}
+                          onChange={(e) => setGistId(e.target.value)}
+                          placeholder="a1b2c3d4e5f6…"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="field-label">{t("Gist 文件名", "Gist Filename")}</span>
+                        <input
+                          type="text"
+                          className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
+                          value={gistFilename}
+                          onChange={(e) => setGistFilename(e.target.value)}
+                          placeholder="opalcv-backup.enc.json"
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+
+                {syncStatus && (
+                  <p
+                    role="status"
+                    className={cx(
+                      "mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[12px]",
+                      syncStatus.ok
+                        ? "bg-ok-bg text-ok"
+                        : "bg-danger-100 text-danger-700"
+                    )}
+                  >
+                    {syncStatus.ok ? (
+                      <IconCheck size={14} className="shrink-0" />
+                    ) : (
+                      <IconAlert size={14} className="shrink-0" />
+                    )}
+                    <span>{syncStatus.text}</span>
+                  </p>
                 )}
-              >
-                {label}
-              </button>
-            ))}
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Btn
+                    variant="primary"
+                    size="sm"
+                    className="rounded-full"
+                    disabled={syncBusy !== null}
+                    onClick={() => void handleSyncUpload()}
+                  >
+                    <IconUpload size={14} />{" "}
+                    {syncBusy === "upload"
+                      ? t("加密上传中…", "Encrypting & uploading…")
+                      : syncTarget === "webdav"
+                      ? t("加密上传到 WebDAV", "Encrypt & Upload to WebDAV")
+                      : t("加密上传到私有 Gist", "Encrypt & Upload to Private Gist")}
+                  </Btn>
+                  <Btn
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    disabled={syncBusy !== null}
+                    onClick={() => void handleSyncDownload()}
+                  >
+                    <IconDownload size={14} />{" "}
+                    {syncBusy === "download"
+                      ? t("下载解密中…", "Downloading & decrypting…")
+                      : syncTarget === "webdav"
+                      ? t("从 WebDAV 恢复", "Restore from WebDAV")
+                      : t("从 Gist 恢复", "Restore from Gist")}
+                  </Btn>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-
-        <div className="mt-4 grid gap-3.5 md:grid-cols-2">
-          <label className="block md:col-span-2">
-            <span className="field-label">{t("同步加密口令", "Sync Passphrase")}</span>
-            <div className="liquid-input relative flex items-center rounded-full px-4 py-2">
-              <input
-                type={showSyncPassphrase ? "text" : "password"}
-                className="w-full bg-transparent pr-7 font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
-                value={syncPassphrase}
-                onChange={(e) => setSyncPassphrase(e.target.value)}
-                placeholder={t("输入加密上传与解密恢复口令…", "Enter passphrase for AES-GCM encryption…")}
-              />
-              <button
-                type="button"
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
-                onClick={() => setShowSyncPassphrase((v) => !v)}
-                aria-label={t("显示/隐藏同步密码", "Show or hide passphrase")}
-              >
-                {showSyncPassphrase ? (
-                  <IconEyeOff size={14} />
-                ) : (
-                  <IconEye size={14} />
-                )}
-              </button>
-            </div>
-          </label>
-
-          {syncTarget === "webdav" ? (
-            <>
-              <label className="block md:col-span-2">
-                <span className="field-label">WebDAV URL</span>
-                <input
-                  type="url"
-                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
-                  value={webdavUrl}
-                  onChange={(e) => setWebdavUrl(e.target.value)}
-                  placeholder="https://dav.example.com/backups/opalcv.enc.json"
-                />
-              </label>
-              <label className="block">
-                <span className="field-label">{t("用户名（可选）", "Username (optional)")}</span>
-                <input
-                  type="text"
-                  className="liquid-input w-full rounded-full px-4 py-2 text-[13px] text-ink-900 placeholder:text-ink-400"
-                  value={webdavUser}
-                  onChange={(e) => setWebdavUser(e.target.value)}
-                  placeholder={t("WebDAV 用户名", "WebDAV username")}
-                />
-              </label>
-              <label className="block">
-                <span className="field-label">{t("密码（可选）", "Password (optional)")}</span>
-                <input
-                  type="password"
-                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
-                  value={webdavPass}
-                  onChange={(e) => setWebdavPass(e.target.value)}
-                  placeholder={t("WebDAV 密码", "WebDAV password")}
-                />
-              </label>
-            </>
-          ) : (
-            <>
-              <label className="block md:col-span-2">
-                <span className="field-label">{t("GitHub Token（gist 权限）", "GitHub Token (gist scope)")}</span>
-                <input
-                  type="password"
-                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
-                  value={gistToken}
-                  onChange={(e) => setGistToken(e.target.value)}
-                  placeholder="ghp_… / github_pat_…"
-                />
-              </label>
-              <label className="block">
-                <span className="field-label">{t("Gist ID（留空自动新建）", "Gist ID (blank to create)")}</span>
-                <input
-                  type="text"
-                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
-                  value={gistId}
-                  onChange={(e) => setGistId(e.target.value)}
-                  placeholder="a1b2c3d4e5f6…"
-                />
-              </label>
-              <label className="block">
-                <span className="field-label">{t("Gist 文件名", "Gist Filename")}</span>
-                <input
-                  type="text"
-                  className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
-                  value={gistFilename}
-                  onChange={(e) => setGistFilename(e.target.value)}
-                  placeholder="opalcv-backup.enc.json"
-                />
-              </label>
-            </>
-          )}
-        </div>
-
-        {syncStatus && (
-          <p
-            role="status"
-            className={cx(
-              "mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-[12px]",
-              syncStatus.ok
-                ? "bg-ok-bg text-ok"
-                : "bg-danger-100 text-danger-700"
-            )}
-          >
-            {syncStatus.ok ? (
-              <IconCheck size={14} className="shrink-0" />
-            ) : (
-              <IconAlert size={14} className="shrink-0" />
-            )}
-            <span>{syncStatus.text}</span>
-          </p>
-        )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Btn
-            variant="primary"
-            size="sm"
-            disabled={syncBusy !== null}
-            onClick={() => void handleSyncUpload()}
-          >
-            <IconUpload size={14} />{" "}
-            {syncBusy === "upload"
-              ? t("加密上传中…", "Encrypting & uploading…")
-              : syncTarget === "webdav"
-              ? t("加密上传到 WebDAV", "Encrypt & Upload to WebDAV")
-              : t("加密上传到私有 Gist", "Encrypt & Upload to Private Gist")}
-          </Btn>
-          <Btn
-            variant="outline"
-            size="sm"
-            disabled={syncBusy !== null}
-            onClick={() => void handleSyncDownload()}
-          >
-            <IconDownload size={14} />{" "}
-            {syncBusy === "download"
-              ? t("下载解密中…", "Downloading & decrypting…")
-              : syncTarget === "webdav"
-              ? t("从 WebDAV 恢复", "Restore from WebDAV")
-              : t("从 Gist 恢复", "Restore from Gist")}
-          </Btn>
         </div>
       </section>
 
-      {/* 危险区（无硬框浅红柔块） */}
-      <section
-        className="anim-fade-up rounded-[24px] bg-danger-100/45 p-5"
-        style={{ animationDelay: "0.15s" }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-danger-100 text-danger-600">
-              <IconAlert size={18} />
-            </span>
-            <div className="flex items-center gap-2">
-              <h2 className="text-[15px] font-bold text-danger-700">
-                {t("清空全部数据", "Clear All Data")}
-              </h2>
-              <InfoTip
-                align="left"
-                content={t(
-                  "删除本机全部简历、JD、AI 建议记录，并将模型配置恢复为默认。操作不可撤销，建议先下载备份。",
-                  "Deletes all local resumes, JDs, and AI suggestions and resets model configs to defaults. Irreversible — download a backup first."
-                )}
-              />
+      {/* 第三层：危险操作区 */}
+      <section aria-label={t("危险操作", "Danger zone")} className="space-y-2.5">
+        <h2 className="px-1 text-[12px] font-semibold tracking-wider text-danger-600/80 uppercase">
+          {t("危险操作", "Danger Zone")}
+        </h2>
+        <div className="rounded-[24px] bg-danger-100/45 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-danger-100 text-danger-600">
+                <IconAlert size={18} />
+              </span>
+              <div>
+                <h3 className="text-[14.5px] font-bold text-danger-700">
+                  {t("清空全部本地数据", "Clear All Local Data")}
+                </h3>
+                <p className="mt-0.5 text-[12px] text-danger-700/80">
+                  {t(
+                    "永久移除本机简历、投递记录与 JD，并将模型恢复为默认（不可撤销）。",
+                    "Permanently deletes all local resumes, applications, and JDs, and resets models."
+                  )}
+                </p>
+              </div>
             </div>
-          </div>
-          {!clearArmed ? (
-            <Btn
-              variant="danger"
-              size="sm"
-              onClick={() => setClearArmed(true)}
-            >
-              <IconTrash size={14} /> {t("清空全部数据", "Clear All Data")}
-            </Btn>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Btn
-                variant="ghost"
-                size="sm"
-                onClick={() => setClearArmed(false)}
-              >
-                {t("取消", "Cancel")}
-              </Btn>
+            {!clearArmed ? (
               <Btn
                 variant="danger"
                 size="sm"
-                className="font-bold"
-                onClick={() => setConfirmClear(true)}
+                className="rounded-full"
+                onClick={() => setClearArmed(true)}
               >
-                <IconTrash size={14} /> {t("确认清空", "Confirm Clear")}
+                <IconTrash size={14} /> {t("清空全部数据", "Clear All Data")}
               </Btn>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center gap-2">
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => setClearArmed(false)}
+                >
+                  {t("取消", "Cancel")}
+                </Btn>
+                <Btn
+                  variant="danger"
+                  size="sm"
+                  className="rounded-full font-bold"
+                  onClick={() => setConfirmClear(true)}
+                >
+                  <IconTrash size={14} /> {t("确认清空", "Confirm Clear")}
+                </Btn>
+              </div>
+            )}
+          </div>
         </div>
       </section>
 

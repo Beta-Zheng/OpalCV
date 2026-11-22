@@ -180,25 +180,25 @@ function AppShell() {
     {
       key: "home",
       label: copy.navHome,
-      icon: <IconNavWorkspace size={20} />,
+      icon: <IconNavWorkspace size={23} />,
       view: { name: "home" },
     },
     {
       key: "applications",
       label: copy.navApplications,
-      icon: <IconNavApplications size={19} />,
+      icon: <IconNavApplications size={22} />,
       view: { name: "applications" },
     },
     {
       key: "models",
       label: copy.navModels,
-      icon: <IconNavModels size={20} />,
+      icon: <IconNavModels size={23} />,
       view: { name: "models" },
     },
     {
       key: "settings",
       label: copy.navSettings,
-      icon: <IconNavSettings size={20} />,
+      icon: <IconNavSettings size={23} />,
       view: { name: "settings" },
     },
   ];
