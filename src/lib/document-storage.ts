@@ -24,27 +24,39 @@ export interface DocumentBackend {
   remove(name: string): Promise<void>;
 }
 
+type CachedSubtree = {
+  id: string;
+  records: Array<[string, unknown]>;
+  assets: Array<[string, string]>;
+};
+const subtreeCache = new WeakMap<object, CachedSubtree>();
+const stringHashCache = new Map<string, string>();
+
 /** Content addressing shares unchanged entries, images and source text across versions. */
 export async function packDocument(value: unknown): Promise<PackedDocument> {
   const records = new Map<string, unknown>();
   const assets = new Map<string, string>();
-  const hashes = new Map<string, string>();
+  if (stringHashCache.size > 1024) stringHashCache.clear();
   const hash = async (s: string) => {
-    if (!hashes.has(s)) {
+    let cached = stringHashCache.get(s);
+    if (!cached) {
       const bytes = await crypto.subtle.digest(
         "SHA-256",
         new TextEncoder().encode(s)
       );
-      hashes.set(
-        s,
-        Array.from(new Uint8Array(bytes), (b) =>
-          b.toString(16).padStart(2, "0")
-        ).join("")
-      );
+      cached = Array.from(new Uint8Array(bytes), (b) =>
+        b.toString(16).padStart(2, "0")
+      ).join("");
+      stringHashCache.set(s, cached);
     }
-    return hashes.get(s)!;
+    return cached;
   };
-  const encode = async (v: unknown, key = ""): Promise<unknown> => {
+  const encode = async (
+    v: unknown,
+    key = "",
+    scopedRecords?: Array<[string, unknown]>,
+    scopedAssets?: Array<[string, string]>
+  ): Promise<unknown> => {
     if (
       typeof v === "string" &&
       v &&
@@ -52,13 +64,43 @@ export async function packDocument(value: unknown): Promise<PackedDocument> {
     ) {
       const id = `asset:${await hash(v)}`;
       assets.set(id, v);
+      scopedAssets?.push([id, v]);
       return { $documentRef: id };
     }
-    if (Array.isArray(v)) return Promise.all(v.map((x) => encode(x, key)));
+    if (Array.isArray(v))
+      return Promise.all(
+        v.map((x) => encode(x, key, scopedRecords, scopedAssets))
+      );
     if (v && typeof v === "object") {
+      const isRecordCandidate =
+        "block_id" in v || "sections" in v || key === "basic_info";
+      if (isRecordCandidate) {
+        const hit = subtreeCache.get(v);
+        if (hit) {
+          for (const [rk, rv] of hit.records) {
+            records.set(rk, rv);
+            scopedRecords?.push([rk, rv]);
+          }
+          for (const [ak, av] of hit.assets) {
+            assets.set(ak, av);
+            scopedAssets?.push([ak, av]);
+          }
+          return { $documentRef: hit.id };
+        }
+      }
+      const localRecords: Array<[string, unknown]> = [];
+      const localAssets: Array<[string, string]> = [];
       const result = Object.fromEntries(
         await Promise.all(
-          Object.entries(v).map(async ([k, x]) => [k, await encode(x, k)])
+          Object.entries(v).map(async ([k, x]) => [
+            k,
+            await encode(
+              x,
+              k,
+              isRecordCandidate ? localRecords : scopedRecords,
+              isRecordCandidate ? localAssets : scopedAssets
+            ),
+          ])
         )
       );
       // Basic info, entries and full data become shared records, rather than copies per snapshot.
@@ -69,6 +111,14 @@ export async function packDocument(value: unknown): Promise<PackedDocument> {
       ) {
         const id = `record:${await hash(JSON.stringify(result))}`;
         records.set(id, result);
+        localRecords.push([id, result]);
+        subtreeCache.set(v, {
+          id,
+          records: localRecords,
+          assets: localAssets,
+        });
+        for (const entry of localRecords) scopedRecords?.push(entry);
+        for (const entry of localAssets) scopedAssets?.push(entry);
         return { $documentRef: id };
       }
       return result;

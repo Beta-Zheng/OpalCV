@@ -30,6 +30,11 @@ export function getUiLang(): UiLang {
   return currentLang;
 }
 
+/** 非 React 模块（如 store / utils / sync）同步获取当前界面语言的双语文案 */
+export function tr(zh: string, en: string): string {
+  return currentLang === "en" ? en : zh;
+}
+
 export function setUiLang(next: UiLang) {
   if (next === currentLang) return;
   currentLang = next;

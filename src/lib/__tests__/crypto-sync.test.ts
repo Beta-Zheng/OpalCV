@@ -178,7 +178,7 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
             files: Record<string, { content: string }>;
           };
           expect(parsed.public).toBe(false);
-          gistContent = parsed.files["touchstone-cv-backup.enc.json"].content;
+          gistContent = parsed.files["opalcv-backup.enc.json"].content;
           return new Response(
             JSON.stringify({
               id: "gist_abc123",
@@ -195,7 +195,7 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
           const parsed = JSON.parse(body ?? "{}") as {
             files: Record<string, { content: string }>;
           };
-          gistContent = parsed.files["touchstone-cv-backup.enc.json"].content;
+          gistContent = parsed.files["opalcv-backup.enc.json"].content;
           return new Response(
             JSON.stringify({
               id: "gist_abc123",
@@ -213,8 +213,8 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
             JSON.stringify({
               id: "gist_abc123",
               files: {
-                "touchstone-cv-backup.enc.json": {
-                  filename: "touchstone-cv-backup.enc.json",
+                "opalcv-backup.enc.json": {
+                  filename: "opalcv-backup.enc.json",
                   truncated: true,
                   raw_url: "https://gist.githubusercontent.com/raw/gist_abc123",
                 },

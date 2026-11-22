@@ -36,6 +36,7 @@ import {
   createDocumentStorage,
   indexedDocumentBackend,
 } from "./document-storage";
+import { getUiLang } from "./i18n";
 import { parseJD } from "./jd";
 import { viewHash } from "./navigation";
 import { resumeVersionContent, versionSummary } from "./versions";
@@ -345,6 +346,51 @@ if (typeof window !== "undefined") {
   }
 }
 
+const STORE_TOAST_EN: Record<string, string> = {
+  "栏目间存在同一条经历，请先手动整理再更新":
+    "Duplicate entries exist across sections; please clean them up before syncing.",
+  "该简历有关联记录，已归档并保留历史":
+    "Resume has linked applications; archived to preserve history.",
+  "已复制简历": "Resume duplicated",
+  "已投递的版本已固定；再次投递请新增记录":
+    "Submitted snapshot is locked; add a new application record for re-applying.",
+  "反馈记录已达上限，请先备份":
+    "Event history limit reached; please export a backup first.",
+  "请等待或取消当前生成，再启动模块优化":
+    "Wait for or cancel the current generation before starting batch polish.",
+  "当前模块没有可优化的非空条目":
+    "No non-empty entries in this section to optimize.",
+  "未检测到可用模型，已使用本地规则引擎生成建议":
+    "No active external model; generated suggestion with local rules.",
+  "模型连接失败，已自动降级为本地规则引擎":
+    "Model connection failed; fell back to local rules engine.",
+  "AI 生成失败，原内容已保留":
+    "AI generation failed; original content preserved.",
+  "模型服务地址无效，请检查配置":
+    "Invalid model endpoint URL; please check model settings.",
+  "已取消外部调用，原内容保持不变":
+    "External AI call cancelled; original content unchanged.",
+  "内容未变化，无需写入；可按检查提示补充真实事实":
+    "Content unchanged; add concrete facts as suggested.",
+  "条目已修改或删除，旧建议未应用；请基于当前内容重新生成":
+    "Entry was modified or removed; regenerate suggestion from current content.",
+  "已应用编辑后的建议": "Applied edited suggestion",
+  "已应用 AI 建议": "Applied AI suggestion",
+  "条目已继续修改，撤销未执行，避免覆盖新内容":
+    "Entry was edited further; undo skipped to avoid overwriting new edits.",
+  "已撤销 AI 建议，恢复接受前的内容":
+    "Undid AI suggestion and restored previous content",
+  "已拒绝建议，原内容保持不变":
+    "Suggestion dismissed; original content unchanged",
+};
+
+function localizeStoreToast(msg: string): string {
+  if (STORE_TOAST_EN[msg]) return STORE_TOAST_EN[msg];
+  const restored = msg.match(/^已恢复 (\d+) 份简历$/);
+  if (restored) return `Restored ${restored[1]} resume(s)`;
+  return msg;
+}
+
 function mapSection(
   r: Resume,
   sectionId: string,
@@ -394,7 +440,11 @@ export const useApp = create<AppState>()(
 
       toast: (kind, msg) => {
         const id = uid("toast");
-        set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, msg }] }));
+        const localized =
+          getUiLang() === "en" ? localizeStoreToast(msg) : msg;
+        set((s) => ({
+          toasts: [...s.toasts.slice(-3), { id, kind, msg: localized }],
+        }));
         setTimeout(() => get().dismissToast(id), 4200);
       },
       dismissToast: (id) =>

@@ -401,6 +401,11 @@ export default function Applications({ initialDueOnly = false }: { initialDueOnl
           variant="primary"
           className="cta-ai rounded-full"
           disabled={!app.resumes.some((r) => !r.archived_at)}
+          title={
+            !app.resumes.some((r) => !r.archived_at)
+              ? t("请先创建一份简历后再记录投递", "Create a resume first before logging applications")
+              : undefined
+          }
           onClick={() => setEdit("new")}
         >
           {t("新增记录", "New Application")}

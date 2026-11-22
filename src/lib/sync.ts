@@ -34,8 +34,9 @@ export interface SyncDownloadResult {
 
 export type FetchLike = typeof fetch;
 
-const DEFAULT_GIST_FILENAME = "touchstone-cv-backup.enc.json";
-const DEFAULT_GIST_DESCRIPTION = "TouchstoneCV Encrypted Backup";
+const DEFAULT_GIST_FILENAME = "opalcv-backup.enc.json";
+const LEGACY_GIST_FILENAME = "touchstone-cv-backup.enc.json";
+const DEFAULT_GIST_DESCRIPTION = "OpalCV Encrypted Backup";
 const GITHUB_API_BASE = "https://api.github.com/gists";
 
 function validateHttpUrl(rawUrl: string): string {
@@ -264,10 +265,19 @@ export async function downloadBackupFromGist(
     files?: Record<string, GistFilePayload>;
   };
   const files = json.files ?? {};
+  const fileKeys = Object.keys(files);
   const preferredName = config.filename?.trim() || DEFAULT_GIST_FILENAME;
-  const targetFile = files[preferredName] ?? Object.values(files)[0];
+  const targetFile =
+    files[preferredName] ??
+    files[DEFAULT_GIST_FILENAME] ??
+    files[LEGACY_GIST_FILENAME] ??
+    (fileKeys.length === 1 ? files[fileKeys[0]] : undefined);
   if (!targetFile) {
-    throw new Error("Gist 中未找到备份文件");
+    throw new Error(
+      fileKeys.length > 1
+        ? `Gist 中包含多个文件，未找到匹配的备份文件（${preferredName}）`
+        : "Gist 中未找到备份文件"
+    );
   }
   let encryptedPayload = targetFile.content ?? "";
   if (targetFile.truncated && targetFile.raw_url) {

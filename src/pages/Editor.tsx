@@ -864,13 +864,16 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
         extra={
           parentResume ? (
             <div className="hidden flex-wrap items-center gap-2 text-[12px] text-ink-500 sm:flex">
-              <span className="truncate max-w-60" title={`来源：${parentResume.title}`}>
-                来源：{parentResume.title}
+              <span
+                className="max-w-60 truncate"
+                title={t(`来源：${parentResume.title}`, `From: ${parentResume.title}`)}
+              >
+                {t(`来源：${parentResume.title}`, `From: ${parentResume.title}`)}
               </span>
               {resume.target?.source_updated_at &&
                 parentResume.updated_at > resume.target.source_updated_at && (
                   <span className="chip bg-seal-100 text-seal-700">
-                    主简历有更新
+                    {t("主简历有更新", "Master updated")}
                   </span>
                 )}
               <button
@@ -878,14 +881,14 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 className="text-brand-700 underline-offset-2 hover:underline"
                 onClick={() => app.go({ name: "editor", resumeId: parentResume.id })}
               >
-                查看主简历
+                {t("查看主简历", "Open Master")}
               </button>
               <button
                 type="button"
                 className="text-brand-700 underline-offset-2 hover:underline"
                 onClick={() => setSourceUpdateOpen(true)}
               >
-                对照更新
+                {t("对照更新", "Compare & Sync")}
               </button>
             </div>
           ) : undefined
@@ -1019,12 +1022,15 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
             {pane === "divider" && editorMode === "layout" && (
               <div
                 role="separator"
-                aria-label="调整编辑与预览宽度"
+                aria-label={t("调整编辑与预览宽度", "Resize editor and preview panes")}
                 aria-orientation="vertical"
                 aria-valuemin={34}
                 aria-valuemax={60}
                 aria-valuenow={splitRatio}
-                aria-valuetext={`内容宽度 ${Math.round(splitRatio)}%，内容在${previewOnLeft ? "右" : "左"}侧`}
+                aria-valuetext={t(
+                  `内容宽度 ${Math.round(splitRatio)}%，内容在${previewOnLeft ? "右" : "左"}侧`,
+                  `Editor width ${Math.round(splitRatio)}%, editor on ${previewOnLeft ? "right" : "left"}`
+                )}
                 tabIndex={0}
                 className="hidden cursor-col-resize touch-none items-center justify-center rounded hover:bg-paper-200 focus:bg-paper-200 xl:flex"
                 onPointerDown={(e) =>
