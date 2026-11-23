@@ -358,13 +358,14 @@ describe("testProvider：连接诊断", () => {
     const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body);
     const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
     expect(firstBody.response_format).toEqual({ type: "json_object" });
-    expect(secondBody.response_format).toBeUndefined();
+    expect(secondBody.response_format.type).toBe("json_schema");
 
-    // 验证未闭合前置 </think> 也能正常解析
-    const parsed = parseAIOutput(
-      '思考过程...</think>{"suggested_block":{"title":"Ok"},"explanation":"done"}',
+    // 验证思考过程中带有花括号 + 尾随逗号的文本也能精准提取最后一个 JSON 对象
+    const noisy = parseAIOutput(
+      'Thinking Process: 1. Input has {"old": 1} in text.\nHere is the result:\n{"suggested_block":{"title":"Ok","bullets":["a",],},"explanation":"done",}',
       testBlock()
     );
-    expect(parsed.suggested_block.title).toBe("Ok");
+    expect(noisy.suggested_block.title).toBe("Ok");
+    expect(noisy.suggested_block.bullets).toEqual(["a"]);
   });
 });

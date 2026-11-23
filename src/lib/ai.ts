@@ -282,6 +282,44 @@ export async function chatOllama(
   return res?.message?.content ?? "";
 }
 
+const AI_SUGGESTION_JSON_SCHEMA = {
+  type: "json_schema",
+  json_schema: {
+    name: "resume_suggestion",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        suggested_block: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            subtitle: { type: "string" },
+            start_date: { type: "string" },
+            end_date: { type: "string" },
+            location: { type: "string" },
+            description: { type: "string" },
+            bullets: { type: "array", items: { type: "string" } },
+            skills: { type: "array", items: { type: "string" } },
+          },
+          required: ["title", "subtitle", "description", "bullets", "skills"],
+          additionalProperties: true,
+        },
+        explanation: { type: "string" },
+        matched_keywords: { type: "array", items: { type: "string" } },
+        warnings: { type: "array", items: { type: "string" } },
+      },
+      required: [
+        "suggested_block",
+        "explanation",
+        "matched_keywords",
+        "warnings",
+      ],
+      additionalProperties: true,
+    },
+  },
+};
+
 export async function chatOpenAI(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
@@ -297,15 +335,29 @@ export async function chatOpenAI(
     throw new DOMException("Aborted", "AbortError");
   }
 
-  const makeInit = (includeResponseFormat: boolean): RequestInit => {
+  const isLocalHost =
+    p.type === "local" ||
+    /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i.test(base);
+
+  const makeInit = (
+    formatMode: "json_object" | "json_schema" | "none"
+  ): RequestInit => {
+    // Local reasoning models (e.g. Qwen3.5 / DeepSeek-R1) easily consume 1000-2000 tokens in
+    // thinking before emitting the JSON body. Bump default 2048 to 4096 for local servers.
+    const effectiveMaxTokens =
+      isLocalHost && (!p.max_tokens || p.max_tokens <= 2048)
+        ? 4096
+        : p.max_tokens;
     const body: Record<string, unknown> = {
       model: p.model_name,
       messages,
       temperature: p.temperature,
-      max_tokens: p.max_tokens,
-      ...(includeResponseFormat
+      max_tokens: effectiveMaxTokens,
+      ...(formatMode === "json_object"
         ? { response_format: { type: "json_object" } }
-        : {}),
+        : formatMode === "json_schema"
+          ? { response_format: AI_SUGGESTION_JSON_SCHEMA }
+          : {}),
       ...(stream ? { stream: true } : {}),
     };
     return {
@@ -324,17 +376,20 @@ export async function chatOpenAI(
     if (typeof msg.content === "string" && msg.content.trim()) {
       return msg.content;
     }
-    if (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()) {
+    if (
+      typeof msg.reasoning_content === "string" &&
+      msg.reasoning_content.trim()
+    ) {
       return msg.reasoning_content;
     }
     return "";
   };
 
   const runRequest = async (
-    includeResponseFormat: boolean,
+    formatMode: "json_object" | "json_schema" | "none",
     timeoutMs: number
   ): Promise<string> => {
-    const init = makeInit(includeResponseFormat);
+    const init = makeInit(formatMode);
     if (stream) {
       return readStreamWithTimeout(
         `${base}/chat/completions`,
@@ -353,22 +408,26 @@ export async function chatOpenAI(
     return extractMessageText(res?.choices?.[0]?.message);
   };
 
-  // For local reasoning models (e.g. Qwen3 / DeepSeek-R1 on LM Studio) where the user left
-  // the default 30s timeout, allow up to 120s so reasoning + JSON output won't be cut off at 30s.
   const effectiveTimeoutMs =
-    (p.type === "local" ||
-      /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i.test(base)) &&
-    p.timeout_ms === 30000
-      ? 120000
-      : p.timeout_ms;
+    isLocalHost && p.timeout_ms === 30000 ? 120000 : p.timeout_ms;
 
   try {
-    return await runRequest(true, effectiveTimeoutMs);
+    return await runRequest("json_object", effectiveTimeoutMs);
   } catch (e) {
-    // LM Studio / local GGUF servers often return HTTP 400 when response_format is {"type":"json_object"}
-    // (LM Studio requires "json_schema" or "text"). Retry seamlessly without response_format.
+    // LM Studio rejects {"type":"json_object"} with HTTP 400 ("response_format.type must be json_schema or text"),
+    // so try "json_schema" first (enforces valid JSON grammar in LM Studio), then fall back to "none".
     if (e instanceof ProviderError && (e.status === 400 || e.status === 422)) {
-      return await runRequest(false, effectiveTimeoutMs);
+      try {
+        return await runRequest("json_schema", effectiveTimeoutMs);
+      } catch (e2) {
+        if (
+          e2 instanceof ProviderError &&
+          (e2.status === 400 || e2.status === 422)
+        ) {
+          return await runRequest("none", effectiveTimeoutMs);
+        }
+        throw e2;
+      }
     }
     throw e;
   }
@@ -386,6 +445,87 @@ export function chat(
 
 /* ---------------- 输出校验（§15.1） ---------------- */
 
+/** 从混有思考过程、说明文字或轻微格式瑕疵的模型文本中提取合法的 JSON 对象 */
+function extractJsonObjectFromText(text: string): Record<string, unknown> {
+  const tryParseCandidate = (candidate: string): Record<string, unknown> | null => {
+    const attempts = [
+      candidate,
+      // 1. 移除对象/数组末尾多余逗号 (trailing commas) + 替换全角スマート引号
+      candidate
+        .replace(/,\s*([}\]])/g, "$1")
+        .replace(/[\u201C\u201D]/g, '"'),
+      // 2. 转义字符串内部裸露的换行符
+      candidate
+        .replace(/,\s*([}\]])/g, "$1")
+        .replace(/"((?:[^"\\]|\\.)*)"/g, (m) =>
+          m.replace(/\r?\n/g, "\\n").replace(/\t/g, "\\t")
+        ),
+    ];
+    for (const str of attempts) {
+      try {
+        const obj = JSON.parse(str);
+        if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+          return obj as Record<string, unknown>;
+        }
+      } catch {
+        // try next repair
+      }
+    }
+    return null;
+  };
+
+  // A. 先按成对大括号扫描所有完整的 {...} 块（从后往前优先，因为思考过程在前面、最终 JSON 在末尾）
+  const balancedSlices: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else {
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            balancedSlices.push(text.slice(i, j + 1));
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 优先匹配包含 suggested_block 或 bullets 的 JSON 对象
+  for (let k = balancedSlices.length - 1; k >= 0; k--) {
+    const slice = balancedSlices[k];
+    if (!slice.includes("suggested_block") && !slice.includes("bullets") && !slice.includes("explanation")) {
+      continue;
+    }
+    const parsed = tryParseCandidate(slice);
+    if (parsed) return parsed;
+  }
+  for (let k = balancedSlices.length - 1; k >= 0; k--) {
+    const parsed = tryParseCandidate(balancedSlices[k]);
+    if (parsed) return parsed;
+  }
+
+  // B. 兜底首尾大括号切片
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("模型未返回 JSON 对象（可能思考耗时过长导致输出被截断，请调大 Max Tokens）");
+  }
+  const fallback = tryParseCandidate(text.slice(start, end + 1));
+  if (fallback) return fallback;
+  throw new Error("JSON 解析失败：模型输出不是合法 JSON");
+}
+
 export function parseAIOutput(
   raw: string,
   original: Block
@@ -396,24 +536,27 @@ export function parseAIOutput(
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("模型未返回 JSON 对象");
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(cleaned.slice(start, end + 1));
-  } catch {
-    throw new Error("JSON 解析失败：模型输出不是合法 JSON");
+  if (!cleaned.includes("{")) {
+    throw new Error("模型未返回 JSON 对象");
   }
-  if (
-    typeof parsed.suggested_block !== "object" ||
-    parsed.suggested_block === null ||
-    Array.isArray(parsed.suggested_block)
-  )
+  const parsed = extractJsonObjectFromText(cleaned);
+  // 兼容部分本地小模型直接返回 Block 字段（漏包外层 suggested_block）
+  const hasDirectBlockFields =
+    typeof parsed.suggested_block !== "object" &&
+    (Array.isArray(parsed.bullets) ||
+      typeof parsed.description === "string" ||
+      typeof parsed.title === "string");
+  const rawSb = hasDirectBlockFields ? parsed : parsed.suggested_block;
+  if (typeof rawSb !== "object" || rawSb === null || Array.isArray(rawSb))
     throw new Error("缺少 suggested_block 字段");
-  if (typeof parsed.explanation !== "string")
-    throw new Error("缺少 explanation 字段");
-  const sb = parsed.suggested_block as Partial<Block>;
+  const explanationText =
+    typeof parsed.explanation === "string"
+      ? parsed.explanation
+      : hasDirectBlockFields
+        ? "已完成内容优化"
+        : null;
+  if (explanationText === null) throw new Error("缺少 explanation 字段");
+  const sb = rawSb as Partial<Block>;
   const merged: Block = {
     ...original,
     title: typeof sb.title === "string" ? sb.title : original.title,
@@ -435,7 +578,7 @@ export function parseAIOutput(
   };
   return {
     suggested_block: merged,
-    explanation: parsed.explanation,
+    explanation: explanationText,
     matched_keywords: Array.isArray(parsed.matched_keywords)
       ? parsed.matched_keywords.filter(
           (x): x is string => typeof x === "string"
@@ -488,8 +631,8 @@ export async function generateWithLLM(
     `简历摘要：\n${resumeSummary || "（无）"}`,
     jdJson ? `目标岗位 JD（JSON）：\n${jdJson}` : "",
     "",
-    `输出格式（严格 JSON，不要 Markdown）：`,
-    `{"suggested_block":{...完整模块...},"explanation":"一句话说明改动","matched_keywords":[],"warnings":[]}`,
+    `输出格式（严格 JSON，不要 Markdown，直接以 { 开头）：`,
+    `{"suggested_block":{...完整模块...},"explanation":"一句话说明改动","matched_keywords":[],"warnings":[]} /no_think`,
   ]
     .filter((s, i) => s !== "" || i < 3)
     .join("\n");
