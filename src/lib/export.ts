@@ -895,6 +895,131 @@ function tokenizeForWrap(text: string): string[] {
   return text.match(/[A-Za-z0-9_+#./%&@'-]+|\s+|[\s\S]/g) ?? [];
 }
 
+function drawSectionIconOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  type: Section["type"],
+  x: number,
+  y: number,
+  size: number,
+  color: string
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  const s = size / 24;
+  ctx.scale(s, s);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2.1;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (type === "summary") {
+    ctx.beginPath();
+    ctx.arc(12, 8, 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(5, 20);
+    ctx.bezierCurveTo(5, 16, 8.2, 14, 12, 14);
+    ctx.bezierCurveTo(15.8, 14, 19, 16, 19, 20);
+    ctx.stroke();
+  } else if (type === "work_experience") {
+    drawRoundedRect(ctx, 3, 7, 18, 13, 2.5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(8, 7);
+    ctx.lineTo(8, 5);
+    ctx.quadraticCurveTo(8, 3.5, 9.5, 3.5);
+    ctx.lineTo(14.5, 3.5);
+    ctx.quadraticCurveTo(16, 3.5, 16, 5);
+    ctx.lineTo(16, 7);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(3, 12);
+    ctx.lineTo(21, 12);
+    ctx.stroke();
+  } else if (type === "project_experience") {
+    ctx.beginPath();
+    ctx.moveTo(4, 6);
+    ctx.lineTo(10, 6);
+    ctx.lineTo(12, 8.5);
+    ctx.lineTo(20, 8.5);
+    ctx.quadraticCurveTo(21, 8.5, 21, 9.5);
+    ctx.lineTo(21, 18.5);
+    ctx.quadraticCurveTo(21, 19.5, 20, 19.5);
+    ctx.lineTo(4, 19.5);
+    ctx.quadraticCurveTo(3, 19.5, 3, 18.5);
+    ctx.lineTo(3, 7);
+    ctx.quadraticCurveTo(3, 6, 4, 6);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(10, 14, 1.5, 0, Math.PI * 2);
+    ctx.arc(15, 14, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (type === "education") {
+    ctx.beginPath();
+    ctx.moveTo(12, 4);
+    ctx.lineTo(22, 9.5);
+    ctx.lineTo(12, 15);
+    ctx.lineTo(2, 9.5);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(6, 12);
+    ctx.lineTo(6, 17);
+    ctx.quadraticCurveTo(12, 20.5, 18, 17);
+    ctx.lineTo(18, 12);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(21, 10);
+    ctx.lineTo(21, 16);
+    ctx.stroke();
+  } else if (type === "skills") {
+    ctx.beginPath();
+    ctx.moveTo(14.7, 6.3);
+    ctx.arc(12, 9, 4.2, -0.4, Math.PI * 1.15);
+    ctx.lineTo(5.2, 18.8);
+    ctx.arc(6.5, 17.5, 1.8, Math.PI * 0.75, -Math.PI * 0.25, true);
+    ctx.lineTo(12.2, 11.8);
+    ctx.stroke();
+  } else if (type === "certifications") {
+    ctx.beginPath();
+    ctx.arc(12, 9.5, 5.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(9, 14.5);
+    ctx.lineTo(7.5, 21);
+    ctx.lineTo(12, 18.5);
+    ctx.lineTo(16.5, 21);
+    ctx.lineTo(15, 14.5);
+    ctx.stroke();
+  } else if (type === "custom") {
+    ctx.beginPath();
+    ctx.moveTo(12, 3.5);
+    ctx.lineTo(21, 8);
+    ctx.lineTo(12, 12.5);
+    ctx.lineTo(3, 8);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(3, 12.5);
+    ctx.lineTo(12, 17);
+    ctx.lineTo(21, 12.5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(3, 17);
+    ctx.lineTo(12, 21.5);
+    ctx.lineTo(21, 17);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(12, 12, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -1307,10 +1432,45 @@ async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null
         const midW = contentW - (avW ? avW + 20 * scale : 0) - (badgeS ? badgeS + 20 * scale : 0);
         const startHeaderY = y;
         if (!dryRun && avatarImg) {
-          ctx.drawImage(avatarImg, padX, startHeaderY, avW, avH);
+          // 1:1 对齐预览端 object-cover + rounded-sm 裁切，绝不拉伸变形
+          const iw = avatarImg.naturalWidth || avW;
+          const ih = avatarImg.naturalHeight || avH;
+          const targetRatio = avW / avH;
+          const srcRatio = iw / ih;
+          let sx = 0, sySrc = 0, sw = iw, sh = ih;
+          if (srcRatio > targetRatio) {
+            sw = ih * targetRatio;
+            sx = (iw - sw) / 2;
+          } else if (srcRatio < targetRatio) {
+            sh = iw / targetRatio;
+            sySrc = (ih - sh) / 2;
+          }
+          ctx.save();
+          drawRoundedRect(ctx, padX, startHeaderY, avW, avH, 3 * scale);
+          ctx.clip();
+          ctx.drawImage(avatarImg, sx, sySrc, sw, sh, padX, startHeaderY, avW, avH);
+          ctx.restore();
         }
         if (!dryRun && badgeImg) {
-          ctx.drawImage(badgeImg, padX + contentW - badgeS, startHeaderY + 4 * scale, badgeS, badgeS);
+          // 1:1 对齐预览端 rounded-full + object-contain 居中缩放
+          const bx = padX + contentW - badgeS;
+          const by = startHeaderY + (Math.max(avH, badgeS) - badgeS) / 2;
+          const iw = badgeImg.naturalWidth || badgeS;
+          const ih = badgeImg.naturalHeight || badgeS;
+          const fit = Math.min(badgeS / iw, badgeS / ih);
+          const dw = iw * fit;
+          const dh = ih * fit;
+          ctx.save();
+          drawRoundedRect(ctx, bx, by, badgeS, badgeS, badgeS / 2);
+          ctx.clip();
+          ctx.drawImage(
+            badgeImg,
+            bx + (badgeS - dw) / 2,
+            by + (badgeS - dh) / 2,
+            dw,
+            dh
+          );
+          ctx.restore();
         }
         const nameFs = baseFs * 2.15;
         y = drawWrappedRuns(
@@ -1672,18 +1832,16 @@ async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null
           ctx.strokeStyle = `#${primaryHex}30`;
           ctx.lineWidth = Math.max(1, 0.9 * scale);
           ctx.stroke();
-          // 徽章中心精致四芒菱形/圆核
-          const cxB = innerX + badgeS / 2;
-          const cyB = badgeY + badgeS / 2;
-          const rB = badgeS * 0.22;
-          ctx.fillStyle = primaryCss;
-          ctx.beginPath();
-          ctx.moveTo(cxB, cyB - rB);
-          ctx.lineTo(cxB + rB, cyB);
-          ctx.lineTo(cxB, cyB + rB);
-          ctx.lineTo(cxB - rB, cyB);
-          ctx.closePath();
-          ctx.fill();
+          // 徽章中心真实语义矢量图标（与网页端 SectionBadge 一一对应）
+          const iconS = badgeS * 0.58;
+          drawSectionIconOnCanvas(
+            ctx,
+            s.type,
+            innerX + (badgeS - iconS) / 2,
+            badgeY + (badgeS - iconS) / 2,
+            iconS,
+            primaryCss
+          );
 
           ctx.fillStyle = primaryCss;
           ctx.fillText(titleText, innerX + badgeS + 7 * scale, titleBase);
