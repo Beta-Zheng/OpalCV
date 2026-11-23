@@ -124,7 +124,7 @@ function AppShell() {
   const reducedMotion = useReducedMotion();
   const [darkMode, setDarkMode] = useState(() => {
     try {
-      return localStorage.getItem("touchstone-theme") === "dark";
+      return localStorage.getItem("opalcv-theme") === "dark";
     } catch {
       return false;
     }
@@ -132,7 +132,7 @@ function AppShell() {
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? "dark" : "light";
     try {
-      localStorage.setItem("touchstone-theme", darkMode ? "dark" : "light");
+      localStorage.setItem("opalcv-theme", darkMode ? "dark" : "light");
     } catch {
       /* Theme works for this session. */
     }

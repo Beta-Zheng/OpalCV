@@ -3,21 +3,26 @@ node_modules/
 dist/
 build/
 *.log
+.env
+.env.*
 .export-qa/
 
-# ---- 本地调试截图（playwright 产物，不进仓库）----
+# Local debug & QA artifacts
+qa/
 shots/
+e2e/e2e-tmp/
 
-# ---- WorkBuddy 工作区数据（memory 等，非源码）----
-.workbuddy/
+# Docs: only share screenshots
+docs/*
+!docs/screenshots/
 
-# ---- MCP / Obsidian 调试遗留的临时文件 ----
-# .mcp.json 内含 API 密钥，严禁提交
+# Local IDE & workspace tooling
+.vscode/
 .mcp.json
 .trae/
+.workbuddy/
+.zcode/
 _*.*
 _vault_templates/
 scripts/
 dashboard-three-columns.css
-e2e/e2e-tmp/
-.zcode/

@@ -57,7 +57,7 @@ export default function Settings() {
   } | null>(null);
   const [restoreMode, setRestoreMode] = useState<"merge" | "replace">("merge");
   const [singleId, setSingleId] = useState("");
-  const SYNC_CONFIG_KEY = "touchstonecv-sync-config";
+  const SYNC_CONFIG_KEY = "opalcv-sync-config";
   const initialSyncConfig = (() => {
     try {
       const raw = localStorage.getItem(SYNC_CONFIG_KEY);

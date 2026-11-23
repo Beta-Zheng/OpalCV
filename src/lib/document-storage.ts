@@ -172,7 +172,7 @@ const transactionDone = (tx: IDBTransaction) =>
 export function indexedDocumentBackend(): DocumentBackend {
   let revision = 0;
   const database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("touchstonecv", 1);
+    const request = indexedDB.open("opalcv", 1);
     request.onupgradeneeded = () => {
       for (const name of ["manifest", "records", "assets"])
         request.result.createObjectStore(name);

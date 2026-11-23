@@ -41,10 +41,10 @@ export default function UsageGuide() {
       if (event.key === GUIDE_STORAGE_KEY && preferences.read())
         setMode((previous) => (previous === "welcome" ? null : previous));
     };
-    window.addEventListener("touchstonecv-open-guide", reopen);
+    window.addEventListener("opalcv-open-guide", reopen);
     window.addEventListener("storage", sync);
     return () => {
-      window.removeEventListener("touchstonecv-open-guide", reopen);
+      window.removeEventListener("opalcv-open-guide", reopen);
       window.removeEventListener("storage", sync);
     };
   }, []);

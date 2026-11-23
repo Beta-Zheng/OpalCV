@@ -35,7 +35,6 @@ export interface SyncDownloadResult {
 export type FetchLike = typeof fetch;
 
 const DEFAULT_GIST_FILENAME = "opalcv-backup.enc.json";
-const LEGACY_GIST_FILENAME = "touchstone-cv-backup.enc.json";
 const DEFAULT_GIST_DESCRIPTION = "OpalCV Encrypted Backup";
 const GITHUB_API_BASE = "https://api.github.com/gists";
 
@@ -270,7 +269,6 @@ export async function downloadBackupFromGist(
   const targetFile =
     files[preferredName] ??
     files[DEFAULT_GIST_FILENAME] ??
-    files[LEGACY_GIST_FILENAME] ??
     (fileKeys.length === 1 ? files[fileKeys[0]] : undefined);
   if (!targetFile) {
     throw new Error(

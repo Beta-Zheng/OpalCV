@@ -124,9 +124,9 @@ export default function Home() {
       setError("");
       setReview(null);
     };
-    window.addEventListener("touchstonecv-open-create", onOpenCreate);
+    window.addEventListener("opalcv-open-create", onOpenCreate);
     return () => {
-      window.removeEventListener("touchstonecv-open-create", onOpenCreate);
+      window.removeEventListener("opalcv-open-create", onOpenCreate);
       ticket.current++;
       running.current = false;
     };
