@@ -377,18 +377,34 @@ function BulletStyleSelect({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={t("本模块要点列表样式（作用于该模块全部条目）", "Bullet marker style for this section")}
+        aria-label={t(`列表样式：${cur.label}`, `List style: ${BULLET_LABEL_EN[cur.key]}`)}
+        title={t(`列表样式：${cur.label}（点击切换）`, `List style: ${BULLET_LABEL_EN[cur.key]}`)}
         className={cx(
-          "editor-action inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] font-medium transition-all",
+          "editor-action inline-flex h-7 items-center gap-1 rounded-full px-2 text-[12px] font-medium transition-all",
           open
             ? "bg-brand-500/12 text-brand-700 ring-1 ring-brand-500/25"
             : "bg-surface text-ink-600 shadow-xs ring-1 ring-ink-900/6 hover:bg-brand-50/70 hover:text-brand-700"
         )}
       >
-        <span className="flex h-4 w-4 items-center justify-center text-brand-600">
-          <BulletGlyph style={cur.key} index={0} size="menu" />
-        </span>
-        <span>{t(cur.label, BULLET_LABEL_EN[cur.key])}</span>
+        {cur.key === "ordered" ? (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="10" y1="6" x2="21" y2="6" />
+            <line x1="10" y1="12" x2="21" y2="12" />
+            <line x1="10" y1="18" x2="21" y2="18" />
+            <path d="M4 6h1v4" />
+            <path d="M4 10h2" />
+            <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+          </svg>
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="9" y1="6" x2="20" y2="6" />
+            <line x1="9" y1="12" x2="20" y2="12" />
+            <line x1="9" y1="18" x2="20" y2="18" />
+            <circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none" />
+          </svg>
+        )}
         <IconChevronDown
           size={11}
           className={cx(
@@ -1242,34 +1258,54 @@ export function BlockCard({
                 </F>
               )}
 
-              {block.type === "summary" || block.type === "custom_text" ? (
-                <div className="sm:col-span-2 min-w-0">
-                  <span className="field-label">
-                    {section.type === "summary"
+              <div className="sm:col-span-2 min-w-0">
+                <span className="field-label">
+                  {section.type === "summary"
+                    ? t("个人总结", "Summary")
+                    : section.type === "skills"
+                    ? t("技能说明", "Skills Overview")
+                    : block.type === "work_experience_item"
+                    ? t("职责与背景（可选）", "Role Overview (Optional)")
+                    : block.type === "project_experience_item"
+                    ? t("项目简介（可选）", "Project Summary (Optional)")
+                    : block.type === "education_item"
+                    ? t("补充说明（可选）", "Details (Optional)")
+                    : t("描述说明", "Description")}
+                </span>
+                <RichTextEditor
+                  ariaLabel={
+                    section.type === "summary"
                       ? t("个人总结", "Summary")
-                      : section.type === "skills"
-                      ? t("技能说明", "Skills Overview")
-                      : t("正文", "Body")}
-                  </span>
-                  <RichTextEditor
-                    ariaLabel={section.type === "summary" ? t("个人总结", "Summary") : t("正文", "Body")}
-                    value={block.description}
-                    onChange={(html) =>
-                      patchBlock(
-                        resume.id,
-                        section.section_id,
-                        block.block_id,
-                        { description: html }
-                      )
-                    }
-                    placeholder={
-                      section.type === "summary"
-                        ? t("简要介绍经验、专长与代表成果", "Brief overview of experience, strengths, and key impact")
-                        : t("填写内容", "Enter content")
-                    }
-                  />
-                </div>
-              ) : null}
+                      : block.type === "work_experience_item"
+                      ? t("职责与背景", "Role Overview")
+                      : block.type === "project_experience_item"
+                      ? t("项目简介", "Project Summary")
+                      : block.type === "education_item"
+                      ? t("补充说明", "Details")
+                      : t("描述说明", "Description")
+                  }
+                  value={block.description}
+                  onChange={(html) =>
+                    patchBlock(
+                      resume.id,
+                      section.section_id,
+                      block.block_id,
+                      { description: html }
+                    )
+                  }
+                  placeholder={
+                    section.type === "summary"
+                      ? t("简要介绍经验、专长与代表成果", "Brief overview of experience, strengths, and key impact")
+                      : block.type === "work_experience_item"
+                      ? t("简要说明团队职责、业务背景或核心定位", "Brief context on team scope, product area, or role")
+                      : block.type === "project_experience_item"
+                      ? t("简要说明项目背景、技术架构或个人角色", "Brief overview of project goals, architecture, or your role")
+                      : block.type === "education_item"
+                      ? t("GPA、主修课程、荣誉奖项或研究方向", "GPA, relevant coursework, honors, or research focus")
+                      : t("填写描述说明", "Enter description")
+                  }
+                />
+              </div>
 
               {block.type === "project_experience_item" && (
                 <F label={t("技能标签", "Skills / Tags")} className="sm:col-span-2">
