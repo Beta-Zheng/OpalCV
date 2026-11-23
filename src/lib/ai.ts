@@ -29,15 +29,14 @@ const SYSTEM_PROMPT = `/no_think
 你是一名专业简历优化顾问。
 
 要求：
-1. 只能基于用户提供的内容进行优化。
-2. 不得编造不存在的项目、公司、技能、职位、数据指标。
-3. 如果用户没有提供数字，不要编造数字。
-4. 如果需要量化结果，只能给出"建议补充"的提示，放在 warnings 数组。
-5. 输出必须为合法 JSON。
-6. 不要输出 Markdown 代码块。
-7. 不要输出额外解释，不要长篇思考过程，直接输出 JSON 结果。
-8. 保持语言简洁、专业、结果导向。
-9. 保留职责强度，不得把参与或协助改成主导。保留日期、专名及估算限定词。`;
+1. 只能基于【当前模块（JSON）】本身已有的内容进行优化，严禁把其他经历或个人总结中的数字、指标嫁接到当前模块。
+2. 不得编造不存在的项目、公司、技能、职位、数据指标；如果当前模块某条要点没有提供数字，严禁添加任何数字。
+3. 字段结构守恒：若当前模块的 description 为空字符串 "" 且 bullets 非空，输出中 description 必须保持为 ""（严禁把 bullets 缩写成一段综述塞进 description）；同理，若 bullets 为空数组 [] 且 description 非空，bullets 必须保持为 []。
+4. 要点条数守恒：当 bullets 非空时，suggested_block.bullets 的条数与顺序必须与原 bullets 一一对应，以便逐条对比。
+5. 如果需要量化结果，只能给出"建议补充"的提示，放在 warnings 数组。
+6. explanation 必须具体说明本次改动的重点（例如：强化了架构重构动词、提炼了背景-方案-结果结构、精简了冗余修饰语），不要只写"已完成内容优化"。
+7. 输出必须为合法 JSON，不要输出 Markdown 代码块，不要长篇思考过程，直接输出 JSON 结果。
+8. 保留职责强度，不得把参与或协助改成主导。保留日期、专名及估算限定词。`;
 
 const ACTION_INSTRUCTION: Record<AIAction, string> = {
   polish:
@@ -557,6 +556,21 @@ export function parseAIOutput(
         : null;
   if (explanationText === null) throw new Error("缺少 explanation 字段");
   const sb = rawSb as Partial<Block>;
+  const origHasBullets = original.bullets.some((b) => b.trim().length > 0);
+  const origHasDesc = original.description.trim().length > 0;
+  const parsedBullets = Array.isArray(sb.bullets)
+    ? sb.bullets.filter((x): x is string => typeof x === "string")
+    : original.bullets;
+  // 字段结构守恒：原本只有 bullets 没有 description 时，禁止模型额外塞入一段冗余综述
+  const nextDescription =
+    !origHasDesc && origHasBullets
+      ? ""
+      : typeof sb.description === "string"
+        ? sb.description
+        : original.description;
+  const nextBullets =
+    !origHasBullets && origHasDesc ? [] : parsedBullets;
+
   const merged: Block = {
     ...original,
     title: typeof sb.title === "string" ? sb.title : original.title,
@@ -565,13 +579,8 @@ export function parseAIOutput(
       typeof sb.start_date === "string" ? sb.start_date : original.start_date,
     end_date: typeof sb.end_date === "string" ? sb.end_date : original.end_date,
     location: typeof sb.location === "string" ? sb.location : original.location,
-    description:
-      typeof sb.description === "string"
-        ? sb.description
-        : original.description,
-    bullets: Array.isArray(sb.bullets)
-      ? sb.bullets.filter((x): x is string => typeof x === "string")
-      : original.bullets,
+    description: nextDescription,
+    bullets: nextBullets,
     skills: Array.isArray(sb.skills)
       ? sb.skills.filter((x): x is string => typeof x === "string")
       : original.skills,
@@ -624,15 +633,28 @@ export async function generateWithLLM(
   jdJson: string | null,
   signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<AISuggestionOutput> {
+  // 仅提取第一行「目标职位：...」，不传入其他工作/项目的具体数字指标，彻底杜绝跨条目数据嫁接
+  const targetRoleLine =
+    (resumeSummary || "").split(/\r?\n/)[0]?.trim() || "目标职位：未填写";
+  const origHasBullets = block.bullets.some((b) => b.trim().length > 0);
+  const origHasDesc = block.description.trim().length > 0;
+  const fieldLockHint =
+    !origHasDesc && origHasBullets
+      ? "注意：当前模块的 description 为空，请只优化 bullets 数组（保持条数与顺序一一对应），suggested_block.description 必须保持为 \"\"。"
+      : !origHasBullets && origHasDesc
+        ? "注意：当前模块的 bullets 为空，请只优化 description 字段，suggested_block.bullets 必须保持为 []。"
+        : "";
+
   const userPrompt = [
     ACTION_INSTRUCTION[action],
+    fieldLockHint,
     "",
     `当前模块（JSON）：\n${JSON.stringify(block, null, 2)}`,
-    `简历摘要：\n${resumeSummary || "（无）"}`,
+    `求职背景：${targetRoleLine}`,
     jdJson ? `目标岗位 JD（JSON）：\n${jdJson}` : "",
     "",
     `输出格式（严格 JSON，不要 Markdown，直接以 { 开头）：`,
-    `{"suggested_block":{...完整模块...},"explanation":"一句话说明改动","matched_keywords":[],"warnings":[]} /no_think`,
+    `{"suggested_block":{...完整模块...},"explanation":"具体说明优化了哪些动词、结构或表达","matched_keywords":[],"warnings":[]} /no_think`,
   ]
     .filter((s, i) => s !== "" || i < 3)
     .join("\n");

@@ -191,6 +191,33 @@ export function diffLines(a: string[], b: string[]): DiffOp[] {
   return out;
 }
 
+/** 词级 / 字符级行内 LCS Diff（单条要点前后对比高亮） */
+export function diffInlineTokens(fromText: string, toText: string): DiffOp[] {
+  const tokenize = (s: string): string[] =>
+    s.match(/[A-Za-z0-9_+#./%&@'-]+|\s+|[\s\S]/g) ?? [];
+  const a = tokenize(stripHtml(fromText));
+  const b = tokenize(stripHtml(toText));
+  if (a.length * b.length > 90000) {
+    return fromText === toText
+      ? [{ kind: "same", text: toText }]
+      : [
+          ...(fromText ? [{ kind: "del" as const, text: fromText }] : []),
+          ...(toText ? [{ kind: "add" as const, text: toText }] : []),
+        ];
+  }
+  const raw = diffLines(a, b);
+  const merged: DiffOp[] = [];
+  for (const op of raw) {
+    const last = merged[merged.length - 1];
+    if (last && last.kind === op.kind) {
+      last.text += op.text;
+    } else {
+      merged.push({ ...op });
+    }
+  }
+  return merged;
+}
+
 /** 将简历内容压平为纯文本，用于 JD 匹配 */
 export function resumeToText(data: {
   basic_info: { name: string; title: string };

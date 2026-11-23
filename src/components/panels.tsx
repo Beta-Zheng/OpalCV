@@ -24,7 +24,7 @@ import type {
   Suggestion,
 } from "../types";
 import { ACTION_LABELS, SECTION_LABELS } from "../types";
-import { cx, diffLines, fmtTime, timeAgo } from "../lib/utils";
+import { cx, diffInlineTokens, diffLines, fmtTime, stripHtml, timeAgo } from "../lib/utils";
 import { actionLabel, useT, useUiLang } from "../lib/i18n";
 import { useApp, useAppSlice } from "../lib/store";
 import {
@@ -256,8 +256,152 @@ function FieldDiff({
   );
 }
 
-function BulletsDiff({ from, to }: { from: string[]; to: string[] }) {
-  const ops = diffLines(from.filter(Boolean), to.filter(Boolean));
+function InlineTokenDiffText({
+  from,
+  to,
+}: {
+  from: string;
+  to: string;
+}) {
+  const ops = useMemo(() => diffInlineTokens(from, to), [from, to]);
+  return (
+    <span className="leading-relaxed break-words">
+      {ops.map((op, idx) =>
+        op.kind === "same" ? (
+          <span key={idx} className="text-ink-800">
+            {op.text}
+          </span>
+        ) : op.kind === "del" ? (
+          <del
+            key={idx}
+            className="mx-0.5 rounded bg-danger-100/75 px-1 py-0.5 text-danger-700/80 line-through decoration-danger-600/60"
+          >
+            {op.text}
+          </del>
+        ) : (
+          <ins
+            key={idx}
+            className="mx-0.5 rounded bg-brand-500/14 px-1 py-0.5 font-semibold text-brand-700 no-underline ring-1 ring-brand-500/25"
+          >
+            {op.text}
+          </ins>
+        )
+      )}
+    </span>
+  );
+}
+
+function BulletsDiff({
+  from,
+  to,
+  excludedIndices,
+  onToggleIndex,
+  interactive,
+}: {
+  from: string[];
+  to: string[];
+  excludedIndices?: ReadonlySet<number>;
+  onToggleIndex?: (index: number) => void;
+  interactive?: boolean;
+}) {
+  const t = useT();
+  const a = from.filter(Boolean);
+  const b = to.filter(Boolean);
+
+  // 当条数一致或常见 1 对 1 润色/改写/扩写时，使用行内词级高亮对比卡片 + 折叠未改动项
+  if (a.length > 0 && b.length > 0 && Math.abs(a.length - b.length) <= 2) {
+    const maxLen = Math.max(a.length, b.length);
+    const items = Array.from({ length: maxLen }, (_, idx) => {
+      const orig = a[idx] ?? "";
+      const next = b[idx] ?? "";
+      const changed = stripHtml(orig).trim() !== stripHtml(next).trim();
+      return { idx, orig, next, changed };
+    });
+    const changedItems = items.filter((it) => it.changed);
+    const unchangedItems = items.filter((it) => !it.changed);
+
+    return (
+      <div className="flex flex-col gap-2">
+        {changedItems.map(({ idx, orig, next }) => {
+          const checked = !excludedIndices?.has(idx);
+          return (
+            <div
+              key={idx}
+              className={cx(
+                "rounded-xl p-2.5 text-[12px] transition-all",
+                checked
+                  ? "bg-surface shadow-2xs ring-1 ring-brand-500/25"
+                  : "bg-subtle/60 opacity-60 ring-1 ring-ink-900/6"
+              )}
+            >
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label
+                  className={cx(
+                    "inline-flex items-center gap-1.5 text-[11px] font-semibold",
+                    interactive ? "cursor-pointer" : "",
+                    checked ? "text-brand-700" : "text-ink-400"
+                  )}
+                >
+                  {interactive && onToggleIndex && (
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleIndex(idx)}
+                      className="h-3.5 w-3.5 rounded accent-brand-600"
+                      aria-label={t(`采纳第 ${idx + 1} 条修改`, `Include bullet #${idx + 1}`)}
+                    />
+                  )}
+                  <span>
+                    {t(`要点 #${idx + 1}`, `Bullet #${idx + 1}`)}
+                    {!orig
+                      ? t(" · 新增", " · Added")
+                      : !next
+                        ? t(" · 删除", " · Removed")
+                        : t(" · 已优化", " · Refined")}
+                  </span>
+                </label>
+                {interactive && (
+                  <span className="text-[10.5px] text-ink-400">
+                    {checked ? t("已勾选采纳", "Selected") : t("保留原句", "Keep original")}
+                  </span>
+                )}
+              </div>
+              <div className="text-[12px] leading-relaxed">
+                {checked ? (
+                  <InlineTokenDiffText from={orig} to={next} />
+                ) : (
+                  <span className="text-ink-500">{stripHtml(orig)}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {unchangedItems.length > 0 && (
+          <details className="rounded-xl bg-subtle/70 px-2.5 py-1.5 text-[11.5px] text-ink-500">
+            <summary className="cursor-pointer select-none font-medium text-ink-500 hover:text-ink-700">
+              {t(
+                `其余 ${unchangedItems.length} 条要点未改动（点击展开）`,
+                `${unchangedItems.length} unchanged bullet(s) (click to expand)`
+              )}
+            </summary>
+            <ul className="mt-1.5 flex flex-col gap-1 border-t border-line pt-1.5">
+              {unchangedItems.map(({ idx, orig }) => (
+                <li key={idx} className="text-[11.5px] leading-relaxed text-ink-500">
+                  <span className="mr-1.5 font-mono text-[11px] text-ink-400">
+                    #{idx + 1}
+                  </span>
+                  {stripHtml(orig)}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    );
+  }
+
+  const ops = diffLines(a, b);
   return (
     <ul className="flex flex-col gap-1">
       {ops.map((op, i) => (
@@ -496,6 +640,7 @@ export function AIPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [trustSession, setTrustSession] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [excludedBySug, setExcludedBySug] = useState<Record<string, number[]>>({});
   const [draft, setDraft] = useState<{
     title: string;
     subtitle: string;
@@ -514,6 +659,41 @@ export function AIPanel({
     list.find((s) => !s.resolution && s.status === "success") ||
     list[0];
 
+  const excludedSet = useMemo(
+    () => new Set(active ? excludedBySug[active.id] ?? [] : []),
+    [active, excludedBySug]
+  );
+
+  const toggleBulletIndex = (idx: number) => {
+    if (!active) return;
+    setExcludedBySug((prev) => {
+      const cur = new Set(prev[active.id] ?? []);
+      if (cur.has(idx)) cur.delete(idx);
+      else cur.add(idx);
+      return { ...prev, [active.id]: Array.from(cur) };
+    });
+  };
+
+  const buildMergedSuggested = (s: Suggestion): Block | undefined => {
+    if (!s.suggested) return undefined;
+    const exc = new Set(excludedBySug[s.id] ?? []);
+    if (exc.size === 0) return s.suggested;
+    const origBullets = s.original.bullets.filter(Boolean);
+    const nextBullets = s.suggested.bullets.filter(Boolean);
+    const maxLen = Math.max(origBullets.length, nextBullets.length);
+    const mergedBullets: string[] = [];
+    for (let i = 0; i < maxLen; i++) {
+      const val = exc.has(i) ? origBullets[i] : nextBullets[i];
+      if (typeof val === "string" && val.trim()) {
+        mergedBullets.push(val);
+      }
+    }
+    return {
+      ...s.suggested,
+      bullets: mergedBullets,
+    };
+  };
+
   const blockTitle = active
     ? active.original.title ||
       active.original.description.slice(0, 16) ||
@@ -521,13 +701,14 @@ export function AIPanel({
     : "";
 
   const startEdit = (s: Suggestion) => {
-    if (!s.suggested) return;
+    const base = buildMergedSuggested(s);
+    if (!base) return;
     setEditing(true);
     setDraft({
-      title: s.suggested.title,
-      subtitle: s.suggested.subtitle,
-      description: s.suggested.description,
-      bullets: s.suggested.bullets.filter(Boolean).join("\n"),
+      title: base.title,
+      subtitle: base.subtitle,
+      description: base.description,
+      bullets: base.bullets.filter(Boolean).join("\n"),
     });
   };
 
@@ -547,7 +728,9 @@ export function AIPanel({
   };
 
   const accept = (s: Suggestion) => {
-    if (acceptSuggestion(s.id)) celebrate();
+    const exc = excludedBySug[s.id] ?? [];
+    const customBlock = exc.length > 0 ? buildMergedSuggested(s) : undefined;
+    if (acceptSuggestion(s.id, customBlock)) celebrate();
   };
 
   return (
@@ -948,23 +1131,31 @@ export function AIPanel({
                           </div>
                         )}
                         {active.original.description !==
-                          active.suggested.description && (
+                          active.suggested.description &&
+                          (active.original.description.trim().length > 0 ||
+                            active.original.bullets.filter(Boolean).length ===
+                              0) && (
                           <div>
                             <p className="field-label">{t("描述对比", "Description Diff")}</p>
-                            <BulletsDiff
-                              from={[active.original.description]}
-                              to={[active.suggested.description]}
-                            />
+                            <div className="rounded-xl bg-surface p-2.5 text-[12px] shadow-2xs ring-1 ring-brand-500/20">
+                              <InlineTokenDiffText
+                                from={active.original.description}
+                                to={active.suggested.description}
+                              />
+                            </div>
                           </div>
                         )}
                         {(active.original.bullets.filter(Boolean).length > 0 ||
                           active.suggested.bullets.filter(Boolean).length >
                             0) && (
                           <div>
-                            <p className="field-label">{t("要点 Diff", "Bullets Diff")}</p>
+                            <p className="field-label">{t("要点逐条对比（可勾选采纳）", "Bullets Diff (Select to apply)")}</p>
                             <BulletsDiff
                               from={active.original.bullets}
                               to={active.suggested.bullets}
+                              excludedIndices={excludedSet}
+                              onToggleIndex={toggleBulletIndex}
+                              interactive={!active.resolution}
                             />
                           </div>
                         )}
@@ -1015,30 +1206,38 @@ export function AIPanel({
                     )}
 
                     {!active.resolution && active.status === "success" && (
-                      <div className="flex flex-wrap gap-2 border-t border-ink-100 pt-2.5">
+                      <div className="flex items-center gap-1.5 border-t border-ink-100 pt-2.5">
                         {!editing ? (
                           <>
                             <button
-                              className="cta-ai flex h-8 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-bold"
+                              className="cta-ai flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold"
                               disabled={
                                 !!active.suggested &&
                                 blockContent(active.original) ===
-                                  blockContent(active.suggested)
+                                  blockContent(
+                                    buildMergedSuggested(active) ??
+                                      active.suggested
+                                  )
                               }
                               onClick={() => accept(active)}
                             >
-                              <IconCheck size={13} /> {t("接受", "Accept")}
+                              <IconCheck size={13} />{" "}
+                              {excludedSet.size > 0
+                                ? t("接受所选", "Accept Selected")
+                                : t("接受", "Accept")}
                             </button>
                             <Btn
                               variant="outline"
-                              className="h-8"
+                              size="sm"
+                              className="h-8 px-2.5 text-[12px]"
                               onClick={() => startEdit(active)}
                             >
-                              <IconEdit size={12} /> {t("编辑后接受", "Edit & Accept")}
+                              <IconEdit size={12} /> {t("微调", "Edit")}
                             </Btn>
                             <Btn
                               variant="ghost"
-                              className="h-8"
+                              size="sm"
+                              className="h-8 px-2 text-[12px] text-ink-500 hover:text-danger-600"
                               onClick={() => rejectSuggestion(active.id)}
                             >
                               <IconX size={13} /> {t("拒绝", "Reject")}
