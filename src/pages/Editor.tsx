@@ -1089,7 +1089,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
             {pane === "preview" && editorMode !== "content" && (
               <div
                 className={cx(
-                  "editor-preview preview-canvas min-w-0 rounded-[26px]",
+                  "editor-preview min-w-0",
                   editorMode === "preview" && "mx-auto max-w-5xl"
                 )}
                 data-testid="live-preview"
