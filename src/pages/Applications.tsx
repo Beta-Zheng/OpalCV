@@ -499,7 +499,7 @@ export default function Applications({ initialDueOnly = false }: { initialDueOnl
           </Btn>
         )}
         <div
-          className="liquid-glass ml-auto inline-flex items-center gap-0.5 rounded-full p-1"
+          className="liquid-glass relative ml-auto inline-flex items-center gap-0.5 rounded-full p-1"
           role="tablist"
           aria-label={t("投递记录视图", "Applications view")}
         >
