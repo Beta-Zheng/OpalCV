@@ -12,7 +12,7 @@ try{
  const context=await browser.newContext({viewport:{width:1440,height:1000}});
  await context.addInitScript(()=>localStorage.setItem('opalcv-usage-guide',JSON.stringify({version:1,decision:'skipped'})));
  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(origin);
- await page.getByRole('heading',{name:'简历工作台',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'工作台',exact:true}).waitFor();
  const fixture=await page.evaluate(async()=>{
   const {useApp}=await import('/src/lib/store.ts');const {buildSampleResume}=await import('/src/lib/samples.ts');
   const {createResumeMeasurer}=await import('/src/components/resume-measure.tsx');
@@ -48,11 +48,11 @@ try{
  await page.goto(origin+'#/editor/'+fixture.id);await page.getByRole('button',{name:'导出',exact:true}).click();
  await page.getByRole('heading',{name:'检查并导出',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'切换紧凑布局',exact:true}).count(),0);
- await page.getByRole('button',{name:'调整篇幅',exact:true}).click();
+ await page.getByRole('button',{name:'智能调整篇幅',exact:true}).click();
  await page.getByRole('heading',{name:'检查并导出',exact:true}).waitFor({state:'hidden'});
  await page.getByRole('heading',{name:'智能篇幅调整',exact:true}).waitFor();
  const afterEntry=await page.evaluate(async id=>{const {useApp}=await import('/src/lib/store.ts');return JSON.stringify(useApp.getState().resumes.find(r=>r.id===id));},fixture.id);
- assert.equal(afterEntry,fixture.before);
+ assert.deepEqual(JSON.parse(afterEntry),JSON.parse(fixture.before));
  await page.getByText('正在测量实际版式…',{exact:true}).waitFor({state:'hidden',timeout:60000});
  assert.equal(await page.getByRole('button',{name:'2 页',exact:true}).getAttribute('aria-pressed'),'true');
  await page.getByRole('button',{name:'2 页',exact:true}).click();
@@ -64,10 +64,10 @@ try{
  await createTwo.click();await page.getByRole('heading',{name:'智能篇幅调整',exact:true}).waitFor({state:'hidden'});
  const two=await page.evaluate(async({id,before})=>{
   const {useApp}=await import('/src/lib/store.ts');const s=useApp.getState();const copy=s.resumes.find(r=>r.id!==id&&r.title.endsWith('2页版'));
-  return {sourceUnchanged:JSON.stringify(s.resumes.find(r=>r.id===id))===before,copy,versions:s.snapshots.filter(x=>x.resume_id===copy.id).length};
+  return {source:s.resumes.find(r=>r.id===id),copy,versions:s.snapshots.filter(x=>x.resume_id===copy.id).length};
  },fixture);
- assert(two.sourceUnchanged);assert(two.versions>=2);assert.deepEqual(two.copy.data,JSON.parse(fixture.before).data);
- await page.goto(origin+'#/editor/'+fixture.id);await page.getByRole('button',{name:'篇幅调整',exact:true}).click();
+ assert.deepEqual(two.source,JSON.parse(fixture.before));assert(two.versions>=2);assert.deepEqual(two.copy.data,JSON.parse(fixture.before).data);
+ await page.goto(origin+'#/editor/'+fixture.id);await page.getByRole('button',{name:'调页',exact:true}).click();
  await page.getByText('正在测量实际版式…',{exact:true}).waitFor({state:'hidden',timeout:60000});
  await page.getByRole('button',{name:'1 页',exact:true}).click();
  await page.getByText('正在测量实际版式…',{exact:true}).waitFor({state:'hidden',timeout:60000});
@@ -98,12 +98,12 @@ try{
  await createOne.click();await page.getByRole('heading',{name:'智能篇幅调整',exact:true}).waitFor({state:'hidden'});
  const one=await page.evaluate(async({id,before})=>{
   const {useApp}=await import('/src/lib/store.ts');const s=useApp.getState();const copy=s.resumes.find(r=>r.id!==id&&r.title.endsWith('1页版'));
-  return {sourceUnchanged:JSON.stringify(s.resumes.find(r=>r.id===id))===before,copy};
+  return {source:s.resumes.find(r=>r.id===id),copy};
  },fixture);
- assert(one.sourceUnchanged);
+ assert.deepEqual(one.source,JSON.parse(fixture.before));
  const source=JSON.parse(fixture.before);for(const s of one.copy.data.sections)for(const b of s.blocks){const original=source.data.sections.find(x=>x.section_id===s.section_id).blocks.find(x=>x.block_id===b.block_id);assert.deepEqual({...b,visible:original.visible},original);}
  for(const [name,resume,expected] of [['one',one.copy,1],['two',two.copy,2]]){
-  const print=await context.newPage();await print.goto(origin);await print.getByRole('heading',{name:'简历工作台',exact:true}).waitFor();
+  const print=await context.newPage();await print.goto(origin);await print.getByRole('heading',{name:'工作台',exact:true}).waitFor();
   const result=await print.evaluate(async r=>{
    const {createResumeMeasurer}=await import('/src/components/resume-measure.tsx');const m=createResumeMeasurer(new AbortController().signal);
    try{
@@ -119,14 +119,14 @@ try{
  }
  // Already fitting originals finish without producing duplicate resumes or snapshots.
  const small=await page.evaluate(async()=>{const {useApp}=await import('/src/lib/store.ts');const {buildSampleResume}=await import('/src/lib/samples.ts');const data=buildSampleResume('frontend','experienced');data.sections=data.sections.filter(s=>['basic_info','work_experience'].includes(s.type));data.sections.find(s=>s.type==='work_experience').blocks=data.sections.find(s=>s.type==='work_experience').blocks.slice(0,1);const id=useApp.getState().createResume(data,'无需调整验证');return {id,count:useApp.getState().resumes.length,snapshots:useApp.getState().snapshots.length};});
- await page.goto(origin+'#/editor/'+small.id);await page.getByRole('button',{name:'篇幅调整',exact:true}).click();
+ await page.goto(origin+'#/editor/'+small.id);await page.getByRole('button',{name:'调页',exact:true}).click();
  await page.getByRole('button',{name:'完成',exact:true}).waitFor({timeout:60000});
  assert.equal(await page.getByRole('button',{name:'1 页',exact:true}).getAttribute('aria-pressed'),'true');
  await page.getByRole('button',{name:'完成',exact:true}).click();
  const smallCounts=await page.evaluate(async()=>{const {useApp}=await import('/src/lib/store.ts');return {count:useApp.getState().resumes.length,snapshots:useApp.getState().snapshots.length};});
  assert.equal(smallCounts.count,small.count);assert.equal(smallCounts.snapshots,small.snapshots);
  const huge=await page.evaluate(async()=>{const {useApp}=await import('/src/lib/store.ts');const {buildSampleResume}=await import('/src/lib/samples.ts');const data=buildSampleResume('frontend','experienced');data.sections=data.sections.filter(s=>['basic_info','work_experience'].includes(s.type));const w=data.sections.find(s=>s.type==='work_experience');w.blocks=w.blocks.slice(0,1);w.blocks[0].bullets=Array.from({length:180},(_,i)=>'真实长段落 '+i+'：负责系统开发与改进，保留事实和成果。');return useApp.getState().createResume(data,'超长条目验证');});
- await page.goto(origin+'#/editor/'+huge);await page.getByRole('button',{name:'篇幅调整',exact:true}).click();await page.getByText('正在测量实际版式…',{exact:true}).waitFor({state:'hidden',timeout:60000});
+ await page.goto(origin+'#/editor/'+huge);await page.getByRole('button',{name:'调页',exact:true}).click();await page.getByText('正在测量实际版式…',{exact:true}).waitFor({state:'hidden',timeout:60000});
  await page.getByRole('button',{name:'1 页',exact:true}).click();await page.getByText('正在测量实际版式…',{exact:true}).waitFor({state:'hidden',timeout:60000});assert(await page.getByRole('button',{name:/创建 1 页副本/}).isDisabled());
  await page.getByRole('button',{name:'2 页',exact:true}).click();await page.getByText('正在测量实际版式…',{exact:true}).waitFor({state:'hidden',timeout:60000});assert(await page.getByRole('button',{name:/创建 2 页副本/}).isDisabled());
  await page.setViewportSize({width:375,height:850});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),375);
