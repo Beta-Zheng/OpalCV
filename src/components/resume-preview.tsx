@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { IconEdit } from "./icons";
-import type { Resume } from "../types";
+import { TEMPLATES, type Resume } from "../types";
 import { type PageLayout } from "../lib/pagination";
 import { A4Sheet } from "./template";
 import { readResumeLayout } from "./resume-measure";
 import { Btn } from "./ui";
 import { flashLocation, scrollInPane, type ResumeLocation } from "../lib/preview-navigation";
-import { useT } from "../lib/i18n";
+import { templateNameLabel, useT, useUiLang } from "../lib/i18n";
 import { stripHtml } from "../lib/utils";
 
 export default function ResumePreview({
@@ -24,6 +24,13 @@ export default function ResumePreview({
   onLocate?: (sectionId: string, blockId?: string) => void;
 }) {
   const t = useT();
+  const uiLang = useUiLang();
+  const tplLabel = templateNameLabel(
+    resume.template_id,
+    TEMPLATES.find((tpl) => tpl.template_id === resume.template_id)?.name ??
+      resume.template_id,
+    uiLang
+  );
   const container = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLDivElement>(null);
   const displayed = useRef<HTMLDivElement>(null);
@@ -206,13 +213,18 @@ export default function ResumePreview({
             className="mx-auto mb-7 last:mb-2"
             style={{ width: 794 * scale, minHeight: page.height * scale }}
           >
-            <div className="mb-2 flex items-center justify-between px-0.5">
-              <p className="inline-flex items-center gap-1.5 rounded-full bg-surface/92 px-2.5 py-0.5 text-[10.5px] font-semibold text-ink-600 shadow-xs ring-1 ring-ink-900/10">
-                {t(`A4 · 第 ${i + 1} / ${pages.length} 页`, `A4 · Page ${i + 1} of ${pages.length}`)}
-                {page.oversized &&
-                  t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
-              </p>
-              <span className="font-mono text-[10px] font-medium text-ink-400">
+            <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <p className="inline-flex items-center gap-1.5 rounded-full bg-surface/92 px-2.5 py-0.5 text-[10.5px] font-semibold text-ink-600 shadow-xs ring-1 ring-ink-900/10">
+                  {t(`A4 · 第 ${i + 1} / ${pages.length} 页`, `A4 · Page ${i + 1} of ${pages.length}`)}
+                  {page.oversized &&
+                    t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
+                </p>
+                <span className="truncate rounded-full bg-brand-500/10 px-2.5 py-0.5 text-[10.5px] font-semibold text-brand-700 ring-1 ring-brand-500/20">
+                  {tplLabel}
+                </span>
+              </div>
+              <span className="shrink-0 font-mono text-[10px] font-medium text-ink-400">
                 210 × 297 mm
               </span>
             </div>
