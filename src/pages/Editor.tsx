@@ -171,7 +171,7 @@ function EditorActionMenu({
           role="menu"
           aria-label={ariaLabel}
           className={cx(
-            "app-menu absolute top-full z-50 mt-1.5 min-w-44",
+            "app-menu absolute top-full z-50 mt-1.5 flex min-w-44 flex-col gap-0.5",
             align === "right" ? "right-0" : "left-0"
           )}
         >
@@ -709,19 +709,6 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 </svg>
               </button>
             </div>
-            <button
-              type="button"
-              className="tool-btn h-9 w-9 shrink-0 rounded-full"
-              title={t("模板与设置", "Template & Style")}
-              aria-label={t("模板与设置", "Template & Style")}
-              onClick={() => setSettingsOpen(true)}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="3" />
-                <path d="M3 9h18" />
-                <path d="M9 21V9" />
-              </svg>
-            </button>
             <EditorActionMenu
               label={t("更多", "More")}
               ariaLabel={t("编辑工具", "Editor tools")}
@@ -767,76 +754,124 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
           </div>
         </div>
 
-        {/* 第二行：视图切换（左）与面板/辅助工具（右），左右平衡 */}
+        {/* 第二行：视图切换 + 大纲/建议组（左）与模板/外观/排版 + 定制岗位 + 工具（右） */}
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-          <div
-            className="liquid-glass relative flex w-full shrink-0 items-center justify-center rounded-full p-0.5 sm:w-auto"
-            role="tablist"
-            onKeyDown={navigateTabs}
-            aria-label={t("编辑视图", "Editor view")}
-          >
-            {(
-              [
-                ["content", t("写内容", "Write")],
-                ["layout", t("内容与预览", "Split")],
-                ["preview", t("仅预览", "Preview")],
-              ] as const
-            )
-              .filter(([mode]) => mode !== "layout" || canSplit)
-              .map(([mode, label]) => (
-                <button
-                  key={mode}
-                  role="tab"
-                  aria-selected={editorMode === mode}
-                  tabIndex={editorMode === mode ? 0 : -1}
-                  className={cx(
-                    "editor-view-tab min-h-7 shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] transition-all",
-                    editorMode === mode
-                      ? "glass-lens font-semibold"
-                      : "text-ink-500 hover:text-ink-900"
-                  )}
-                  onClick={() => {
-                    setEditorMode(mode);
-                    closeAllPanels();
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div
+              className="liquid-glass relative flex w-full shrink-0 items-center justify-center rounded-full p-0.5 sm:w-auto"
+              role="tablist"
+              onKeyDown={navigateTabs}
+              aria-label={t("编辑视图", "Editor view")}
+            >
+              {(
+                [
+                  ["content", t("写内容", "Write")],
+                  ["layout", t("内容与预览", "Split")],
+                  ["preview", t("仅预览", "Preview")],
+                ] as const
+              )
+                .filter(([mode]) => mode !== "layout" || canSplit)
+                .map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    role="tab"
+                    aria-selected={editorMode === mode}
+                    tabIndex={editorMode === mode ? 0 : -1}
+                    className={cx(
+                      "editor-view-tab min-h-7 shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] transition-all",
+                      editorMode === mode
+                        ? "glass-lens font-semibold"
+                        : "text-ink-500 hover:text-ink-900"
+                    )}
+                    onClick={() => {
+                      setEditorMode(mode);
+                      closeAllPanels();
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+            </div>
+
+            <div className="liquid-glass hidden shrink-0 items-center gap-0.5 rounded-full p-0.5 sm:inline-flex">
+              <button
+                type="button"
+                aria-pressed={outlineOpen}
+                aria-label={t("大纲", "Outline")}
+                title={t("大纲", "Outline")}
+                className={cx(
+                  "tool-btn h-8 w-8 rounded-full",
+                  outlineOpen && "glass-lens text-brand-700"
+                )}
+                onClick={toggleOutline}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M7 12h14" />
+                  <path d="M7 18h14" />
+                  <circle cx="3.5" cy="12" r="1" fill="currentColor" stroke="none" />
+                  <circle cx="3.5" cy="18" r="1" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-pressed={rightOpen && panelTab === "ai"}
+                aria-label={t("AI 建议", "AI Polish")}
+                title={t("AI 建议", "AI Polish")}
+                className={cx(
+                  "tool-btn relative h-8 w-8 rounded-full",
+                  rightOpen && panelTab === "ai" && "glass-lens text-brand-700"
+                )}
+                onClick={() => openRightPanel("ai", true)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                </svg>
+                {rightOpen && panelTab === "ai" && (
+                  <span className="sp-dot absolute right-1.5 top-1.5" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           </div>
 
-          <div className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] sm:ml-auto sm:inline-flex">
+          <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:ml-auto sm:inline-flex">
             <button
               type="button"
-              aria-pressed={outlineOpen}
-              aria-label={t("目录", "Outline")}
-              title={t("目录", "Outline")}
-              className={cx(
-                "tool-btn h-9 w-9 rounded-full",
-                outlineOpen && "bg-brand-50 text-brand-700"
-              )}
-              onClick={toggleOutline}
+              aria-label={t("模板", "Templates")}
+              title={t("选择模板", "Templates")}
+              className="tool-btn h-8 w-8 rounded-full"
+              onClick={() => {
+                setSettingsTab("template");
+                setSettingsOpen(true);
+              }}
             >
-              <IconBookOpen size={18} />
+              <IconLayout size={16} />
             </button>
             <button
               type="button"
-              aria-pressed={rightOpen && panelTab === "ai"}
-              aria-label={t("建议", "AI Polish")}
-              title={t("建议", "AI Polish")}
-              className={cx(
-                "tool-btn relative h-9 w-9 rounded-full",
-                rightOpen && panelTab === "ai" && "bg-brand-50 text-brand-700"
-              )}
-              onClick={() => openRightPanel("ai", true)}
+              aria-label={t("外观", "Style")}
+              title={t("外观配色与字体", "Appearance & Style")}
+              className="tool-btn h-8 w-8 rounded-full"
+              onClick={() => {
+                setSettingsTab("style");
+                setSettingsOpen(true);
+              }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-              </svg>
-              {rightOpen && panelTab === "ai" && (
-                <span className="sp-dot absolute right-1.5 top-1.5" aria-hidden="true" />
-              )}
+              <IconPalette size={16} />
             </button>
+            <button
+              type="button"
+              aria-label={t("排版", "Layout")}
+              title={t("排版间距与列表", "Layout & Spacing")}
+              className="tool-btn h-8 w-8 rounded-full"
+              onClick={() => {
+                setSettingsTab("layout");
+                setSettingsOpen(true);
+              }}
+            >
+              <IconType size={16} />
+            </button>
+            <span className="mx-0.5 h-4 w-px bg-line" aria-hidden="true" />
             <button
               type="button"
               aria-pressed={!!resume.target && rightOpen && panelTab === "jd"}
@@ -1341,7 +1376,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                         ? { label: t("英文推荐", "EN"), cls: "resume-badge-target" }
                         : tpl.recommendedLocale === "both"
                           ? { label: t("中英通用", "ZH/EN"), cls: "resume-badge-master" }
-                          : { label: t("中文推荐", "ZH"), cls: "bg-subtle text-ink-600" };
+                          : { label: t("中文推荐", "ZH"), cls: "bg-rose-500/12 text-rose-600" };
                     return (
                       <button
                         key={tpl.template_id}

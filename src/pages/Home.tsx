@@ -76,7 +76,7 @@ function ResumeKindBadge({
   );
 }
 
-type CreateTab = "start" | "file" | "paste" | "samples";
+type CreateTab = "start" | "file" | "paste" | "samples" | "blank";
 type SampleLangFilter = "all" | "zh" | "en";
 
 export default function Home() {
@@ -100,6 +100,7 @@ export default function Home() {
     useState<NonNullable<Resume["audience"]>>("experienced");
   const [locale, setLocale] = useState<"zh" | "en">("zh");
   const [sampleLang, setSampleLang] = useState<SampleLangFilter>("all");
+  const [blankTemplate, setBlankTemplate] = useState<string>("modern_single_column");
   const [paste, setPaste] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -179,10 +180,16 @@ export default function Home() {
     setReview(null);
     setError("");
   };
-  const create = (data: ResumeData, title?: string, overrideLocale?: "zh" | "en") => {
+  const create = (
+    data: ResumeData,
+    title?: string,
+    overrideLocale?: "zh" | "en",
+    templateId?: string
+  ) => {
     const id = app.createResume(data, title, {
       audience,
       locale: overrideLocale ?? locale,
+      ...(templateId ? { template_id: templateId } : {}),
     });
     close();
     app.go({ name: "editor", resumeId: id });
@@ -935,13 +942,88 @@ export default function Home() {
                   ))}
                   <button
                     className="pastel-amber rounded-2xl p-4 text-left transition-transform hover:-translate-y-0.5"
-                    onClick={() => create(emptyResume(), t("未命名简历", "Untitled Resume"))}
+                    onClick={() => setTab("blank")}
                   >
                     <p className="text-[14px] font-bold text-ink-900">{t("空白简历", "Blank Resume")}</p>
                     <p className="mt-1 text-[12px] text-ink-500">
-                      {t("从零填写真实经历", "Start fresh from scratch")}
+                      {t("选模板后从零填写经历", "Pick a template and start fresh")}
                     </p>
                   </button>
+                </div>
+              )}
+              {tab === "blank" && (
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[13px] font-medium text-ink-700">
+                      {t("选择空白简历的初始模板", "Choose a starting template")}
+                    </p>
+                    <Btn
+                      variant="primary"
+                      size="sm"
+                      className="cta-ai rounded-full px-4"
+                      onClick={() =>
+                        create(
+                          emptyResume(),
+                          t("未命名简历", "Untitled Resume"),
+                          locale,
+                          blankTemplate
+                        )
+                      }
+                    >
+                      {t("使用所选模板创建", "Create Resume")}
+                    </Btn>
+                  </div>
+                  <div className="grid max-h-80 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3">
+                    {TEMPLATES.map((tpl) => {
+                      const selected = blankTemplate === tpl.template_id;
+                      const previewResume: Resume = {
+                        id: "preview",
+                        title: templateNameLabel(tpl.template_id, tpl.name, uiLang),
+                        data: emptyResume(),
+                        template_id: tpl.template_id,
+                        theme: { primary_color: "#4F46E5", font_size: 14, font_family: "sans", density: "medium" },
+                        created_at: "",
+                        updated_at: "",
+                        locale,
+                        audience,
+                      };
+                      const localeTag =
+                        tpl.recommendedLocale === "en"
+                          ? { label: "EN", cls: "bg-brand-50 text-brand-700" }
+                          : tpl.recommendedLocale === "both"
+                          ? { label: t("中/EN", "ZH/EN"), cls: "bg-subtle text-ink-600" }
+                          : { label: "中文", cls: "bg-rose-500/12 text-rose-600" };
+                      return (
+                        <button
+                          key={tpl.template_id}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setBlankTemplate(tpl.template_id)}
+                          onDoubleClick={() =>
+                            create(
+                              emptyResume(),
+                              t("未命名简历", "Untitled Resume"),
+                              locale,
+                              tpl.template_id
+                            )
+                          }
+                          className={`group flex flex-col overflow-hidden rounded-2xl text-left transition-all hover:-translate-y-0.5 ${
+                            selected ? "soft-panel ring-2 ring-brand-500/75" : "soft-panel hover:shadow-md"
+                          }`}
+                        >
+                          <ResumeThumbnail resume={previewResume} />
+                          <div className="flex items-center justify-between gap-1.5 p-2.5">
+                            <span className="truncate text-[12.5px] font-semibold text-ink-900">
+                              {templateNameLabel(tpl.template_id, tpl.name, uiLang)}
+                            </span>
+                            <span className={`chip shrink-0 rounded-full px-1.5 py-0 text-[10px] font-semibold ${localeTag.cls}`}>
+                              {localeTag.label}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
               {tab === "file" && (
@@ -1030,7 +1112,7 @@ export default function Home() {
                               className={`chip shrink-0 rounded-full px-2 py-0 text-[10.5px] font-semibold ${
                                 item.locale === "en"
                                   ? "bg-brand-50 text-brand-700"
-                                  : "bg-subtle text-ink-600"
+                                  : "bg-rose-500/12 text-rose-600"
                               }`}
                             >
                               {item.locale === "en" ? "EN" : "中文"}

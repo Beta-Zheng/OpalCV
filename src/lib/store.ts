@@ -92,7 +92,7 @@ interface AppState {
   createResume: (
     data: ResumeData,
     title?: string,
-    options?: Pick<Resume, "locale" | "audience">
+    options?: Pick<Partial<Resume>, "locale" | "audience" | "template_id">
   ) => string;
   deleteResume: (id: string) => void;
   archiveResume: (id: string, archived: boolean) => void;
@@ -461,7 +461,7 @@ export const useApp = create<AppState>()(
           id,
           title: title || data.basic_info.name || "未命名简历",
           data: { ...data, metadata: { ...data.metadata, created_at: now } },
-          template_id: "modern_single_column",
+          template_id: options?.template_id || "modern_single_column",
           theme: {
             primary_color: "#4F46E5",
             font_size: 14,
