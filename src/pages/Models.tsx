@@ -483,6 +483,7 @@ export default function Models() {
   const [delTarget, setDelTarget] = useState<ModelProvider | null>(null);
   const [tests, setTests] = useState<Record<string, TestState>>({});
   const [confirmExternal, setConfirmExternal] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<RouteStrategy | null>(null);
   const [sessionPassphrase, setSessionPassphrase] = useState<string | null>(
     () => getSessionPassphrase()
   );
@@ -592,11 +593,12 @@ export default function Models() {
   const localModel = models.find((m) => m.enabled && m.type !== "external");
   const externalModel = models.find((m) => m.enabled && m.type === "external");
   const t = useT();
+  const effectiveRoute: RouteStrategy = privacy.allowExternal ? privacy.route : "local_only";
   const modeLabel = localModel
-    ? t("本地模型", "Local Model")
+    ? t(`当前生效：${providerDisplayName(localModel.name, uiLang)}`, `Active: ${providerDisplayName(localModel.name, uiLang)}`)
     : privacy.allowExternal && privacy.route !== "local_only" && externalModel
-    ? t("外部模型", "External Model")
-    : t("本地规则", "Local Rules");
+    ? t(`当前生效：${providerDisplayName(externalModel.name, uiLang)}`, `Active: ${providerDisplayName(externalModel.name, uiLang)}`)
+    : t("当前生效：本地规则引擎", "Active: Local Rules");
 
   const runTest = async (p: ModelProvider) => {
     let target = p;
@@ -692,10 +694,12 @@ export default function Models() {
             <Toggle
               checked={privacy.allowExternal}
               onChange={(v) => {
-                if (v) setConfirmExternal(true);
-                else {
-                  setPrivacy({ allowExternal: false });
-                  toast("ok", t("外部模型已关闭，所有请求仅走本地", "External models disabled; local-only mode active"));
+                if (v) {
+                  setPendingRoute(privacy.route === "local_only" ? "local_first" : privacy.route);
+                  setConfirmExternal(true);
+                } else {
+                  setPrivacy({ allowExternal: false, route: "local_only" });
+                  toast("ok", t("外部模型已关闭，已切换为仅本地模式", "External models disabled; switched to Local Only"));
                 }
               }}
               label={t("允许外部模型", "Allow External Models")}
@@ -722,14 +726,22 @@ export default function Models() {
                 key={k}
                 type="button"
                 title={desc}
-                aria-pressed={privacy.route === k}
+                aria-pressed={effectiveRoute === k}
                 onClick={() => {
-                  setPrivacy({ route: k });
-                  toast("ok", t(`已切换为${label}`, `Switched to ${label}`));
+                  if (k === "local_only") {
+                    setPrivacy({ allowExternal: false, route: "local_only" });
+                    toast("ok", t("已切换为仅本地", "Switched to Local Only"));
+                  } else if (!privacy.allowExternal) {
+                    setPendingRoute(k);
+                    setConfirmExternal(true);
+                  } else {
+                    setPrivacy({ route: k });
+                    toast("ok", t(`已切换为${label}`, `Switched to ${label}`));
+                  }
                 }}
                 className={cx(
                   "rounded-full px-3 py-2 text-[13px] transition-all",
-                  privacy.route === k
+                  effectiveRoute === k
                     ? "glass-lens font-semibold"
                     : "text-ink-500 hover:text-ink-900"
                 )}
@@ -787,6 +799,12 @@ export default function Models() {
               </span>
             )}
           </div>
+          <p className=" -mt-2 text-[12px] text-ink-500">
+            {t(
+              "仅用于加密本机保存的外部 API Key；只用本地模型可留空，忘记主密码需重填 Key。",
+              "Optional. Encrypts local external API keys; leave blank for local-only models. Forgotten passphrases require re-entering keys."
+            )}
+          </p>
 
           {!sessionPassphrase ? (
             <div className="flex items-center gap-2">
@@ -900,7 +918,7 @@ export default function Models() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="truncate text-[15px] font-bold text-ink-900">
-                        {providerDisplayName(m.name, uiLang)}
+                        {providerDisplayName(m.name, uiLang).replace(/（默认关闭）|\s*\(Off by Default\)/g, "").trim()}
                       </h3>
                       <span className={cx("chip rounded-full px-2.5", TYPE_META[m.type].cls)}>
                         {m.type === "local"
@@ -999,7 +1017,7 @@ export default function Models() {
                   >
                     <IconZap size={12} /> {testRes?.running ? t("测试中…", "Testing…") : t("测试连接", "Test Connection")}
                   </Btn>
-                  <div className="ml-auto flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                  <div className="ml-auto flex gap-1 opacity-65 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <button
                       className="tool-btn"
                       onClick={() => {
@@ -1067,11 +1085,18 @@ export default function Models() {
         }
         confirmText="我了解风险，开启"
         onConfirm={() => {
-          setPrivacy({ allowExternal: true });
+          setPrivacy({
+            allowExternal: true,
+            route: pendingRoute ?? (privacy.route === "local_only" ? "local_first" : privacy.route),
+          });
+          setPendingRoute(null);
           setConfirmExternal(false);
-          toast("warn", "外部模型已开启");
+          toast("warn", t("外部模型已开启", "External models enabled"));
         }}
-        onCancel={() => setConfirmExternal(false)}
+        onCancel={() => {
+          setPendingRoute(null);
+          setConfirmExternal(false);
+        }}
       />
     </div>
   );
