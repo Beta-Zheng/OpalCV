@@ -644,13 +644,23 @@ export default function Models() {
                 : "默认仅在本地规则运行，不上传任何简历内容；启用外部模型前逐次弹窗确认。"
             }
           />
-          <span className="chip rounded-full bg-brand-50 px-2.5 py-1 text-[12px] text-brand-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-500/10 px-3 py-1 text-[12px] font-medium text-brand-700">
+            <span
+              className={cx(
+                "h-1.5 w-1.5 rounded-full",
+                localModel || (privacy.allowExternal && privacy.route !== "local_only" && externalModel)
+                  ? "bg-emerald-500"
+                  : "bg-brand-500"
+              )}
+              aria-hidden="true"
+            />
             {modeLabel}
           </span>
         </div>
         <Btn
           variant="primary"
           size="sm"
+          className="cta-ai rounded-full px-4"
           onClick={() => {
             setEditing(null);
             setFormOpen(true);
@@ -660,10 +670,10 @@ export default function Models() {
         </Btn>
       </header>
 
-      {/* 隐私路由 & 本地主密码（两列等高极简卡片） */}
+      {/* 隐私路由 & 本地主密码（两列等高极简卡片，统一三段节奏） */}
       <div className="grid gap-4 lg:grid-cols-2">
         <section
-          className="soft-panel anim-fade-up flex flex-col justify-between gap-4 rounded-[24px] p-5"
+          className="soft-panel anim-fade-up flex flex-col justify-between gap-3 rounded-[24px] p-5"
           style={{ animationDelay: "0.05s" }}
         >
           <div className="flex items-center justify-between gap-3">
@@ -672,8 +682,8 @@ export default function Models() {
                 className={cx(
                   "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
                   privacy.allowExternal
-                    ? "bg-seal-100 text-seal-600"
-                    : "bg-surface text-brand-600"
+                    ? "bg-amber-500/12 text-amber-600"
+                    : "bg-sky-500/12 text-sky-600"
                 )}
               >
                 <IconShield size={17} />
@@ -685,10 +695,13 @@ export default function Models() {
                 content={`开启后发送内容到外部服务前会逐次弹窗确认。累计外部调用 ${externalCallCount} 次。`}
               />
             </div>
-            <Toggle
-              checked={privacy.allowExternal}
-              onChange={(v) => {
-                if (v) {
+            <button
+              type="button"
+              role="switch"
+              aria-checked={privacy.allowExternal}
+              aria-label={t("允许外部模型", "Allow External Models")}
+              onClick={() => {
+                if (!privacy.allowExternal) {
                   setPendingRoute(privacy.route === "local_only" ? "local_first" : privacy.route);
                   setConfirmExternal(true);
                 } else {
@@ -696,11 +709,31 @@ export default function Models() {
                   toast("ok", t("外部模型已关闭，已切换为仅本地模式", "External models disabled; switched to Local Only"));
                 }
               }}
-              label={t("允许外部模型", "Allow External Models")}
-            />
+              className={cx(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors",
+                privacy.allowExternal
+                  ? "bg-amber-500/12 text-amber-700 hover:bg-amber-500/20"
+                  : "bg-surface text-ink-500 ring-1 ring-ink-900/6 hover:text-ink-800"
+              )}
+            >
+              <span
+                className={cx(
+                  "h-1.5 w-1.5 rounded-full",
+                  privacy.allowExternal ? "bg-amber-500" : "bg-ink-300"
+                )}
+                aria-hidden="true"
+              />
+              <span>{privacy.allowExternal ? t("已开启", "Enabled") : t("已关闭", "Off")}</span>
+            </button>
           </div>
+          <p className="text-[12px] leading-relaxed text-ink-500">
+            {t(
+              "默认所有简历内容留在本地；开启后按下方策略路由，外发前可逐次确认。",
+              "Resume data stays local by default; when enabled, external APIs follow the route below."
+            )}
+          </p>
 
-          <div className="liquid-glass relative grid grid-cols-3 gap-1 rounded-full p-1">
+          <div className="liquid-glass relative grid h-10 grid-cols-3 gap-1 rounded-full p-1">
             {(
               [
                 [
@@ -734,9 +767,9 @@ export default function Models() {
                   }
                 }}
                 className={cx(
-                  "rounded-full px-3 py-2 text-[13px] transition-all",
+                  "flex items-center justify-center rounded-full px-3 text-[12.5px] transition-all",
                   effectiveRoute === k
-                    ? "glass-lens font-semibold"
+                    ? "glass-lens font-semibold text-brand-700"
                     : "text-ink-500 hover:text-ink-900"
                 )}
               >
@@ -748,7 +781,7 @@ export default function Models() {
 
         {/* 本地主密码加密 API Key */}
         <section
-          className="soft-panel anim-fade-up flex flex-col justify-between gap-4 rounded-[24px] p-5"
+          className="soft-panel anim-fade-up flex flex-col justify-between gap-3 rounded-[24px] p-5"
           style={{ animationDelay: "0.08s" }}
         >
           <div className="flex items-center justify-between gap-3">
@@ -757,10 +790,10 @@ export default function Models() {
                 className={cx(
                   "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
                   sessionPassphrase
-                    ? "bg-ok-bg text-ok"
+                    ? "bg-emerald-500/12 text-emerald-600"
                     : encryptedModels.length > 0
-                    ? "bg-seal-100 text-seal-600"
-                    : "bg-surface text-ink-600"
+                    ? "bg-amber-500/12 text-amber-600"
+                    : "bg-surface text-ink-600 ring-1 ring-ink-900/5"
                 )}
               >
                 <IconLock size={17} />
@@ -788,12 +821,26 @@ export default function Models() {
               />
             </div>
             {(sessionPassphrase || encryptedModels.length > 0) && (
-              <span className="chip rounded-full bg-surface px-2.5 py-0.5 text-[11px] text-ink-500">
+              <span
+                className={cx(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium",
+                  sessionPassphrase
+                    ? "bg-emerald-500/12 text-emerald-700"
+                    : "bg-amber-500/12 text-amber-700"
+                )}
+              >
+                <span
+                  className={cx(
+                    "h-1.5 w-1.5 rounded-full",
+                    sessionPassphrase ? "bg-emerald-500" : "bg-amber-500"
+                  )}
+                  aria-hidden="true"
+                />
                 {sessionPassphrase ? t("已解锁", "Unlocked") : t("已锁定", "Locked")}
               </span>
             )}
           </div>
-          <p className=" -mt-2 text-[12px] text-ink-500">
+          <p className="text-[12px] leading-relaxed text-ink-500">
             {t(
               "仅用于加密本机保存的外部 API Key；只用本地模型可留空，忘记主密码需重填 Key。",
               "Optional. Encrypts local external API keys; leave blank for local-only models. Forgotten passphrases require re-entering keys."
@@ -802,9 +849,12 @@ export default function Models() {
 
           {!sessionPassphrase ? (
             <div className="flex items-center gap-2">
-              <div className="liquid-input relative flex min-w-0 flex-1 items-center rounded-full px-3.5 py-1.5">
+              <div className="liquid-input relative flex h-10 min-w-0 flex-1 items-center rounded-full px-3.5">
                 <input
                   type={showPassphrase ? "text" : "password"}
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
                   className="w-full bg-transparent pr-7 font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
                   value={passphraseInput}
                   onChange={(e) => setPassphraseInput(e.target.value)}
@@ -820,7 +870,7 @@ export default function Models() {
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-700"
                   onClick={() => setShowPassphrase((v) => !v)}
                   aria-label={t("显示/隐藏主密码", "Show or hide passphrase")}
                 >
@@ -831,10 +881,14 @@ export default function Models() {
                   )}
                 </button>
               </div>
-              <Btn
-                variant={passphraseInput ? "primary" : "outline"}
-                size="sm"
-                className="shrink-0"
+              <button
+                type="button"
+                className={cx(
+                  "inline-flex h-10 shrink-0 items-center justify-center rounded-full px-4 text-[12.5px] font-medium transition-all",
+                  passphraseInput
+                    ? "cta-ai text-white shadow-sm"
+                    : "cursor-not-allowed bg-surface text-ink-400 ring-1 ring-ink-900/8 shadow-xs"
+                )}
                 disabled={cryptoBusy || !passphraseInput}
                 onClick={() => void unlockOrEnablePassphrase()}
               >
@@ -843,7 +897,7 @@ export default function Models() {
                   : encryptedModels.length > 0
                   ? t("解锁", "Unlock")
                   : t("启用加密", "Enable")}
-              </Btn>
+              </button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
