@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import type { Application, ApplicationStatus, ResumeSnapshot } from "../types";
 import { useAppSlice } from "../lib/store";
 import { appStatusLabel, useT, useUiLang } from "../lib/i18n";
+import { celebrateInterviewProgress } from "../lib/celebrate";
 import { nowISO, uid, fmtDate } from "../lib/utils";
 import { Btn, Confirm, GlassSelect, InfoTip, Modal, ModalHeader } from "../components/ui";
 import {
@@ -308,7 +309,8 @@ export default function Applications({ initialDueOnly = false }: { initialDueOnl
     "snapshots",
     "go",
     "saveApplication",
-    "deleteApplication"
+    "deleteApplication",
+    "toast"
   );
   const [edit, setEdit] = useState<Application | "new" | null>(null);
   const [quick, setQuick] = useState<Application | null>(null);
@@ -378,10 +380,14 @@ export default function Applications({ initialDueOnly = false }: { initialDueOnl
       `推进状态至「${APPLICATION_LABELS[nextStatus]}」`,
       `Moved to ${appStatusLabel(nextStatus, APPLICATION_LABELS[nextStatus], "en")}`
     );
-    app.saveApplication(
-      { ...a, status: nextStatus, applied_at: applied, updated_at: nowISO() },
-      note
-    );
+    if (
+      app.saveApplication(
+        { ...a, status: nextStatus, applied_at: applied, updated_at: nowISO() },
+        note
+      )
+    ) {
+      celebrateInterviewProgress(nextStatus, uiLang, app.toast);
+    }
   };
   return (
     <div className="mx-auto max-w-6xl px-4 py-7 sm:px-6">
@@ -740,7 +746,7 @@ export default function Applications({ initialDueOnly = false }: { initialDueOnl
 }
 
 function QuickFeedback({ initial, onClose }: { initial: Application; onClose: () => void }) {
-  const app = useAppSlice('saveApplication');
+  const app = useAppSlice('saveApplication', 'toast');
   const uiLang = useUiLang();
   const t = useT();
   const [status, setStatus] = useState(initial.status);
@@ -789,7 +795,10 @@ function QuickFeedback({ initial, onClose }: { initial: Application; onClose: ()
           disabled={status === initial.status && followup === initial.follow_up_at && !note.trim()}
           onClick={() => {
             const applied = initial.applied_at || (['applied', 'interview', 'offer', 'rejected'].includes(status) ? fmtDate(nowISO()) : '');
-            if (app.saveApplication({ ...initial, status, applied_at: applied, follow_up_at: followup, updated_at: nowISO() }, note.trim())) onClose();
+            if (app.saveApplication({ ...initial, status, applied_at: applied, follow_up_at: followup, updated_at: nowISO() }, note.trim())) {
+              celebrateInterviewProgress(status, uiLang, app.toast);
+              onClose();
+            }
           }}
         >
           {t("保存进度", "Save Progress")}

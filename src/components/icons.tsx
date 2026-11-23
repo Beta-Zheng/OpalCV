@@ -73,30 +73,29 @@ export const IconArchive = icon(Archive);
 export function IconNavWorkspace({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
-      <path
-        d="M8.5 4.5h8A2.5 2.5 0 0 1 19 7v11"
-        stroke="currentColor"
-        strokeWidth="1.65"
-        strokeLinecap="round"
-        strokeOpacity="0.45"
-      />
       <rect
-        x="4.5"
-        y="6.5"
-        width="12"
-        height="14.5"
-        rx="2.6"
+        x="4"
+        y="4"
+        width="7"
+        height="7"
+        rx="2"
         fill="currentColor"
-        fillOpacity="0.10"
+        fillOpacity="0.16"
         stroke="currentColor"
         strokeWidth="1.75"
       />
-      <circle cx="8.4" cy="10.6" r="1.25" fill="currentColor" />
-      <path
-        d="M11.4 10.6h2.6M7.5 14.3h6.2M7.5 17.2h4.2"
+      <rect x="13" y="4" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <rect x="4" y="13" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <rect
+        x="13"
+        y="13"
+        width="7"
+        height="7"
+        rx="2"
+        fill="currentColor"
+        fillOpacity="0.12"
         stroke="currentColor"
-        strokeWidth="1.65"
-        strokeLinecap="round"
+        strokeWidth="1.75"
       />
     </svg>
   );
@@ -148,29 +147,28 @@ export function IconNavModels({ size = 20, className = "" }: { size?: number; cl
 export function IconNavSettings({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
+      <ellipse
+        cx="10.5"
+        cy="6.5"
+        rx="6"
+        ry="2.4"
+        fill="currentColor"
+        fillOpacity="0.16"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
       <path
-        d="M4.5 8h5M14.5 8h5M4.5 16h9M18.5 16h1"
+        d="M4.5 6.5v5c0 1.3 2.7 2.4 6 2.4M4.5 11.5v5c0 1.3 2.7 2.4 6 2.4"
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"
       />
-      <circle
-        cx="12"
-        cy="8"
-        r="2.4"
-        fill="currentColor"
-        fillOpacity="0.16"
+      <path
+        d="M16.5 13.2v-2m0 2h2m-2 0a3.5 3.5 0 0 1 3.3 4.7M16.5 19.8v2m0-2h-2m2 0a3.5 3.5 0 0 1-3.3-4.7"
         stroke="currentColor"
-        strokeWidth="1.75"
-      />
-      <circle
-        cx="16"
-        cy="16"
-        r="2.4"
-        fill="currentColor"
-        fillOpacity="0.16"
-        stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

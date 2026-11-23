@@ -45,7 +45,6 @@ import {
 import { selectProvider } from "../lib/ai";
 import { SAMPLE_JD_TEXT } from "../lib/samples";
 import { blockContent } from "../lib/backup";
-import { celebrate } from "../lib/celebrate";
 import { Btn, Empty, ScoreBar, ScoreRing } from "./ui";
 import {
   IconCheck,
@@ -716,7 +715,6 @@ export function AIPanel({
       bullets: draft.bullets.split("\n"),
     };
     if (!acceptSuggestion(s.id, edited)) return;
-    celebrate();
     setEditing(false);
     setDraft(null);
   };
@@ -724,7 +722,7 @@ export function AIPanel({
   const accept = (s: Suggestion) => {
     const exc = excludedBySug[s.id] ?? [];
     const customBlock = exc.length > 0 ? buildMergedSuggested(s) : undefined;
-    if (acceptSuggestion(s.id, customBlock)) celebrate();
+    acceptSuggestion(s.id, customBlock);
   };
 
   return (

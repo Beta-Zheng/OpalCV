@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Application } from "../../types";
 import { applicationStats } from "../applications";
+import { INTERVIEW_ENCOURAGEMENTS, pickInterviewEncouragement } from "../celebrate";
 const base: Application = {
   id: "one",
   resume_id: "resume_test",
@@ -71,5 +72,12 @@ describe("投递统计口径", () => {
     expect(stats.interviews).toBe(1);
     expect(stats.submitted).toBe(2);
     expect(stats.followups).toBe(0);
+  });
+  it("面试进度更新提供 10 条非空中英文鼓励文案", () => {
+    expect(INTERVIEW_ENCOURAGEMENTS).toHaveLength(10);
+    for (let i = 0; i < 10; i++) {
+      expect(pickInterviewEncouragement("zh", i).trim().length).toBeGreaterThan(5);
+      expect(pickInterviewEncouragement("en", i).trim().length).toBeGreaterThan(5);
+    }
   });
 });
