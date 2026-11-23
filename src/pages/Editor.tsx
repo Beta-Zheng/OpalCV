@@ -743,8 +743,8 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
           </div>
         </div>
 
-        {/* 第二行：视图切换与辅助工具栏 */}
-        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        {/* 第二行：视图切换（左）与面板/辅助工具（右），左右平衡 */}
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
           <div
             className="liquid-glass relative flex w-full shrink-0 items-center justify-center rounded-full p-0.5 sm:w-auto"
             role="tablist"
@@ -781,7 +781,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               ))}
           </div>
 
-          <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:inline-flex">
+          <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:ml-auto sm:inline-flex">
             <Btn
               variant="ghost"
               size="sm"
@@ -1129,7 +1129,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                           }
                           onClick={swapPanes}
                         >
-                          {t("换边", "Swap")}
+                          {t("对调", "Swap")}
                         </Btn>
                       )}
                       <Btn size="sm" variant="ghost" className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]" onClick={() => setOnePageOpen(true)}>{t("调页", "Fit Pages")}</Btn>

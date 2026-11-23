@@ -524,10 +524,10 @@ function BulletsEdit({
                     : t("未勾选：预览不显示列表符号（点击勾选）", "Bullet marker hidden (click to show)")
                 }
                 className={cx(
-                  "mt-[0.42rem] flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all",
+                  "mt-[0.42rem] flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-all",
                   marked
-                    ? "bg-brand-500/10 text-brand-600 ring-1 ring-brand-500/20 hover:bg-brand-500/16"
-                    : "bg-ink-900/4 text-ink-400 ring-1 ring-ink-900/8 hover:bg-ink-900/8 hover:text-ink-600"
+                    ? "text-brand-600 hover:bg-brand-500/12"
+                    : "text-ink-300 hover:bg-ink-900/6 hover:text-ink-600"
                 )}
               >
                 <span
@@ -1478,7 +1478,7 @@ export function SectionCard({
   return (
     <section
       className={cx(
-        "soft-panel rounded-[22px] transition-all duration-200",
+        "group/sec soft-panel rounded-[22px] transition-all duration-200",
         !section.visible && "opacity-65"
       )}
     >
@@ -1534,6 +1534,7 @@ export function SectionCard({
               }
             />
           )}
+          <div className="flex items-center gap-0.5 opacity-45 transition-opacity group-hover/sec:opacity-100 focus-within:opacity-100">
           {section.type !== "basic_info" && (
             <div ref={secMenuRef} className="relative">
               <button
@@ -1621,6 +1622,7 @@ export function SectionCard({
               <IconTrash size={15} />
             </button>
           )}
+          </div>
         </div>
       </header>
 

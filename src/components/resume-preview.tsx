@@ -185,11 +185,8 @@ export default function ResumePreview({
           <div
             data-preview-toolbar
             onClick={(e) => e.stopPropagation()}
-            className="liquid-glass relative flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full px-2.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="liquid-glass relative flex max-w-full flex-nowrap items-center gap-0.5 overflow-x-auto whitespace-nowrap rounded-full px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            <span className="shrink-0 rounded-full bg-surface/85 px-2 py-0.5 text-[11px] font-semibold text-ink-600 ring-1 ring-ink-900/6">
-              {t(`${pages.length} 页`, `${pages.length}p`)}
-            </span>
             <div className="flex shrink-0 flex-nowrap items-center gap-0.5" data-preview-controls>
               {tools}
               {(["fit", 0.75, 1] as const).map((value) => (
