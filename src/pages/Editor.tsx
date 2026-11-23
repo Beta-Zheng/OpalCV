@@ -8,7 +8,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { motion } from "framer-motion";
 import {
   DndContext,
   PointerSensor,
@@ -27,10 +26,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { AIAction, Block, BulletStyleKey, Resume, Section } from "../types";
-import { AUDIENCE_LABELS, BULLET_STYLE_OPTIONS, TEMPLATES } from "../types";
+import { BULLET_STYLE_OPTIONS, TEMPLATES } from "../types";
 import { cx } from "../lib/utils";
 import { useAppSlice, useResume } from "../lib/store";
-import { audienceLabel, templateNameLabel, useT, useUiLang } from "../lib/i18n";
+import { templateNameLabel, useT, useUiLang } from "../lib/i18n";
 import { SectionCard } from "../components/blocks";
 import { BulletGlyph } from "../components/template";
 import { AIPanel, JDPanel, OutlinePanel } from "../components/panels";
@@ -45,19 +44,15 @@ import WorkflowDialog, {
 } from "../components/workflow-dialog";
 import { ApplicationForm } from "./Applications";
 import type { PageLayout } from "../lib/pagination";
-import { completion, inspectResume, hasReviewedTarget, isCurrentExport } from "../lib/workflow";
+import { inspectResume, hasReviewedTarget, isCurrentExport } from "../lib/workflow";
 import { Btn, GlassSelect, Modal, ModalHeader, SaveIndicator, useActionMenu } from "../components/ui";
 import { flashLocation, scrollInPane, type ResumeLocation } from "../lib/preview-navigation";
 import {
-  IconBookOpen,
   IconCheck,
   IconChevronDown,
   IconChevronLeft,
-  IconFile,
   IconGrip,
-  IconLayout,
   IconPalette,
-  IconPanelRight,
   IconPlus,
   IconSpark,
   IconTarget,
@@ -385,18 +380,6 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
   const sections = useMemo(
     () =>
       resume ? [...resume.data.sections].sort((a, b) => a.order - b.order) : [],
-    [resume]
-  );
-  const issues = useMemo(
-    () => (resume ? inspectResume(resume) : []),
-    [resume]
-  );
-  const warningCount = useMemo(
-    () => issues.filter((i) => i.severity === "warning").length,
-    [issues]
-  );
-  const completionPct = useMemo(
-    () => (resume ? completion(resume) : 0),
     [resume]
   );
 
@@ -733,6 +716,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                   label: t("内容建议", "AI Polish"),
                   onSelect: () => openRightPanel("ai"),
                 },
+                { label: t("切换模板", "Switch Template"), onSelect: () => setTemplateModalOpen(true) },
                 { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
                 { label: t("篇幅调整", "Fit Pages"), onSelect: () => setOnePageOpen(true) },
                 { label: t("历史版本", "History"), onSelect: () => setTool("versions") },
@@ -1152,6 +1136,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 </svg>
               }
               items={[
+                { label: t("切换模板", "Switch Template"), onSelect: () => setTemplateModalOpen(true) },
                 { label: t("切换模板", "Switch Template"), onSelect: () => setTemplateModalOpen(true) },
                 { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
                 { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },

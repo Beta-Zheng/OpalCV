@@ -6,9 +6,9 @@
  * ------------------------------------------------------------------ */
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { Block, Resume, Section, SectionType, HeaderLayoutKey, BulletStyleKey } from "../types";
-import { cx, fontStack, densityVars, isRichHtml, resolveBulletStyle, sanitizeInline, bulletPairs, stripHtml } from "../lib/utils";
+import { cx, fontStack, densityVars, isRichHtml, resolveBulletStyle, sanitizeInline, bulletPairs } from "../lib/utils";
 import { localizedResume, blockHasContent } from "../lib/workflow";
-import { IconArrowRight, IconAward, IconBriefcase, IconCheck, IconFolderGit, IconGraduationCap, IconLayers, IconUser, IconWrench } from "./icons";
+import { IconAward, IconBriefcase, IconFolderGit, IconGraduationCap, IconLayers, IconUser, IconWrench } from "./icons";
 
 function orderedVisible(data: Resume["data"]): Section[] {
   return [...data.sections].filter((s) => s.visible).sort((a, b) => a.order - b.order);

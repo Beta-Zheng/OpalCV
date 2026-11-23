@@ -24,6 +24,14 @@ const hasText = (s?: string) =>
     .replace(/&nbsp;/g, " ")
     .trim();
 export function blockHasContent(b: Block): boolean {
+  if (b.type === "skill_group") {
+    return [
+      b.subtitle,
+      b.description,
+      ...(b.bullets ?? []),
+      ...(b.skills ?? []),
+    ].some(hasText);
+  }
   return [
     b.title,
     b.subtitle,

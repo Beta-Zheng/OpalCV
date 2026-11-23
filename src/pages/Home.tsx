@@ -14,12 +14,9 @@ import { buildSampleResume, SAMPLE_CATALOG } from "../lib/samples";
 import { nowISO, timeAgo, fmtDate } from "../lib/utils";
 import { useAppSlice } from "../lib/store";
 import {
-  CORE_MODULES,
   groupResumeFamilies,
-  isCurrentExport,
   completion,
   inspectResume,
-  moduleFilled,
   sectionHasContent,
 } from "../lib/workflow";
 import { Btn, Confirm, GlassSelect, Modal, ModalHeader } from "../components/ui";
@@ -117,8 +114,6 @@ export default function Home() {
   const [view, setView] = useState<'list' | 'cards'>('list');
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
-  let lastBackup: string | null = null;
-  try { lastBackup = localStorage.getItem('resume-last-backup'); } catch { /* Storage may be unavailable. */ }
   const fileRef = useRef<HTMLInputElement>(null);
   const ticket = useRef(0);
   const running = useRef(false);
