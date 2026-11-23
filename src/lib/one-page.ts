@@ -6,15 +6,49 @@ import { blockHasContent } from './workflow';
 export function onePageLayouts(source: Resume): Resume[] {
   const themes: Resume['theme'][] = [source.theme];
   const floor = Math.min(14, source.theme.font_size);
-  for (let size = source.theme.font_size; ; size = Math.max(floor, Math.round((size - .5) * 10) / 10)) {
+  const margins = source.theme.page_margin === 'narrow'
+    ? (['narrow'] as const)
+    : ([undefined, 'narrow'] as const);
+  const lineHeights = source.theme.line_height && source.theme.line_height <= 1.32
+    ? ([source.theme.line_height] as const)
+    : ([undefined, 1.35, 1.3] as const);
+
+  // First pass: keep original font_size and try margin / density / line-height / header_layout
+  for (const density of ['medium', 'compact'] as const) {
+    if (source.theme.density === 'compact' && density === 'medium') continue;
+    for (const page_margin of margins) {
+      for (const line_height of lineHeights) {
+        themes.push({
+          ...source.theme,
+          density,
+          ...(page_margin ? { page_margin } : {}),
+          ...(line_height ? { line_height } : {}),
+        });
+        themes.push({
+          ...source.theme,
+          density,
+          header_layout: 'row',
+          ...(page_margin ? { page_margin } : {}),
+          ...(line_height ? { line_height } : {}),
+        });
+      }
+    }
+  }
+
+  // Second pass: step down font_size by 0.5px down to floor (14px)
+  for (let size = Math.max(floor, Math.round((source.theme.font_size - .5) * 10) / 10);
+    size >= floor && source.theme.font_size > floor;
+    size = Math.max(floor, Math.round((size - .5) * 10) / 10)) {
     for (const density of ['medium', 'compact'] as const) {
-      // Never loosen a compact original while trying to reduce its page count.
       if (source.theme.density === 'compact' && density === 'medium') continue;
-      themes.push({ ...source.theme, density, font_size: size });
-      themes.push({ ...source.theme, density, font_size: size, header_layout: 'row' });
+      for (const page_margin of margins) {
+        themes.push({ ...source.theme, density, font_size: size, ...(page_margin ? { page_margin } : {}) });
+        themes.push({ ...source.theme, density, font_size: size, header_layout: 'row', ...(page_margin ? { page_margin } : {}) });
+      }
     }
     if (size === floor) break;
   }
+
   const seen = new Set<string>();
   return themes.filter(theme => {
     const key = JSON.stringify(theme);
@@ -53,8 +87,12 @@ export function defaultFitLocks(source: Resume, terms: string[] = []) {
 /** Prefer readable layouts; a sparse last page is a hint, not a reason to delete facts. */
 export function fitLayoutCost(source: Resume, candidate: Resume, lastPageFill = 1) {
   const density = { loose: 0, medium: 1, compact: 2 };
+  const baseLh = source.theme.line_height ?? (source.theme.density === 'compact' ? 1.32 : source.theme.density === 'loose' ? 1.75 : 1.45);
+  const candLh = candidate.theme.line_height ?? (candidate.theme.density === 'compact' ? 1.32 : candidate.theme.density === 'loose' ? 1.75 : 1.45);
   return Math.max(0, source.theme.font_size - candidate.theme.font_size) * 20 +
     Math.max(0, density[candidate.theme.density ?? 'medium'] - density[source.theme.density ?? 'medium']) * 4 +
+    ((source.theme.page_margin ?? 'standard') !== (candidate.theme.page_margin ?? 'standard') && candidate.theme.page_margin === 'narrow' ? 2 : 0) +
+    Math.max(0, baseLh - candLh) * 10 +
     ((source.theme.header_layout ?? 'row') !== (candidate.theme.header_layout ?? 'row') ? 1 : 0) +
     Math.max(0, .35 - lastPageFill) * 6;
 }

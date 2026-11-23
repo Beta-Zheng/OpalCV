@@ -577,7 +577,7 @@ function AcademicPhotoSheet({ resume }: { resume: Resume; forPrint?: boolean }) 
   return (
     <div
       className="resume-sheet bg-white"
-      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), color: "#222", ...densityVars(resume.theme.density) }}
+      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), color: "#222", ...densityVars(resume.theme.density, resume.theme) }}
     >
       {basicVisible && (
         <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)] flex items-center gap-5">
@@ -671,7 +671,7 @@ function SwissGridSheet({ resume }: { resume: Resume; forPrint?: boolean }) {
   return (
     <div
       className="resume-sheet bg-white"
-      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density) }}
+      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density, resume.theme) }}
     >
       {basicVisible && (info.name || info.title || contacts.length > 0) && (
         <header
@@ -770,7 +770,7 @@ function ExecutiveSidebarSheet({ resume }: { resume: Resume; forPrint?: boolean 
   return (
     <div
       className="resume-sheet bg-white"
-      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density) }}
+      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density, resume.theme) }}
     >
       {basicVisible && (info.name || info.title || contacts.length > 0) && (
         <header
@@ -901,7 +901,7 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
   return (
     <div
       className="resume-sheet bg-white"
-      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(effectiveFont), ...densityVars(effectiveDensity) }}
+      style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(effectiveFont), ...densityVars(effectiveDensity, resume.theme) }}
     >
       {headerEl}
       <main>
@@ -918,7 +918,7 @@ export function A4Sheet({ resume, forPrint }: { resume: Resume; forPrint?: boole
   const prepared = localizedResume(resume);
   const effectiveDensity = resume.theme.density ?? (resume.template_id === "campus_compact" || resume.template_id === "latex_minimal" ? "compact" : undefined);
   return (
-    <div className="resume-sheet-wrap bg-white" style={{ width: forPrint ? "210mm" : 794, minHeight: forPrint ? "297mm" : 1123, ...densityVars(effectiveDensity) }}>
+    <div className="resume-sheet-wrap bg-white" style={{ width: forPrint ? "210mm" : 794, minHeight: forPrint ? "297mm" : 1123, ...densityVars(effectiveDensity, resume.theme) }}>
       <div style={{ minHeight: forPrint ? "297mm" : 1123, padding: "var(--page-pad-y) var(--page-pad-x)" }}>
         <ResumeSheet resume={prepared} forPrint={forPrint} />
       </div>

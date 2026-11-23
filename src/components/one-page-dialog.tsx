@@ -55,7 +55,11 @@ export default function OnePageDialog({ resume, onClose, onEdit }: {
         }
         let best = resume, bestMeasure = before, bestCost = Infinity;
         if (!fitsTarget(before, targetPages)) {
-          for (const candidate of onePageLayouts(resume).slice(1)) {
+          const candidates = onePageLayouts(resume)
+            .slice(1)
+            .sort((a, b) => fitLayoutCost(resume, a) - fitLayoutCost(resume, b));
+          for (const candidate of candidates) {
+            if (bestCost < Infinity && fitLayoutCost(resume, candidate, 1) >= bestCost) break;
             const measured = await measurer.measure(candidate);
             const cost = fitLayoutCost(resume, candidate, lastFill(measured));
             if (fitsTarget(measured, targetPages)) {
@@ -116,6 +120,12 @@ export default function OnePageDialog({ resume, onClose, onEdit }: {
       : '',
     (resume.theme.density ?? 'medium') !== (draft.theme.density ?? 'medium')
       ? t(`间距 ${densityNames[resume.theme.density ?? 'medium']} → ${densityNames[draft.theme.density ?? 'medium']}`, `Spacing ${densityNames[resume.theme.density ?? 'medium']} → ${densityNames[draft.theme.density ?? 'medium']}`)
+      : '',
+    (resume.theme.page_margin ?? 'standard') !== (draft.theme.page_margin ?? 'standard') && draft.theme.page_margin === 'narrow'
+      ? t('页边距收窄（标准 → 紧凑）', 'Margins tightened (Standard → Narrow)')
+      : '',
+    draft.theme.line_height && resume.theme.line_height !== draft.theme.line_height
+      ? t(`行高微调为 ${draft.theme.line_height}`, `Line height ${draft.theme.line_height}`)
       : '',
     (resume.theme.header_layout ?? 'row') !== (draft.theme.header_layout ?? 'row')
       ? t('条目标题改为横排', 'Compact inline entry headers')
@@ -202,6 +212,7 @@ export default function OnePageDialog({ resume, onClose, onEdit }: {
             {plan === 'custom' && <p className="text-[12px] font-medium">{t('已自定义内容', 'Custom selection')}</p>}
           </fieldset>}
           {ready && fits && hidden.size === 0 && changes.length > 0 && <p className="text-[13px] text-brand-700">{t('全部内容已保留，仅调整排版。', 'All content preserved — layout adjusted only.')}</p>}
+          {ready && fits && lastFill(preview.measurement) > 0.97 && <p className="text-[12px] text-seal-700">{t('当前刚好压线贴边（填充 >97%），建议导出 PDF 后抽查页尾。', 'Near bottom margin (>97% full); verify PDF export tail.')}</p>}
           {ready && !fits && <p className="text-[13px] text-seal-700">{oversized.length ? t('以下条目超过单页容量，请先精简或拆成独立经历。', 'Entries below exceed a single page height; trim or split them first.') : t('当前方案未达标。可调整纳入内容、解锁条目，或选择 2 页。', 'Current plan still overflows. Adjust included items, unlock entries, or choose 2 pages.')}</p>}
           {oversized.map(({ section, block }) => <div key={block.block_id} className="rounded-lg border border-line p-2 text-[13px]"><p>{titleOf(block)}</p>{onEdit && <Btn size="sm" onClick={() => { onClose(); onEdit(section.section_id, block.block_id); }}>{t('前往编辑', 'Edit')}</Btn>}</div>)}
           {emptySections.length > 0 && <p role="alert" className="text-[13px] text-seal-700">{t(`此版本将不展示${emptySections.map(s => s.title).join('、')}，请确认符合用途。`, `This copy omits ${emptySections.map(s => s.title).join(', ')}. Verify this fits your goal.`)}</p>}

@@ -329,8 +329,8 @@ function AppShell() {
 
   return (
     <div id="app-root" className="relative flex h-screen overflow-hidden bg-page">
-      {/* 全局吸顶顶栏（桌面端与移动端一致：左侧 OpalCV 与右侧中/英、深浅模式同一高度吸顶） */}
-      {view.name !== "editor" ? (
+      {/* 全局吸顶顶栏（非编辑页显示，桌面端右上角保持留白，中/英与深浅切换已移入左侧胶囊菜单栏） */}
+      {view.name !== "editor" && (
         <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between bg-page/78 px-4 backdrop-blur-md md:px-6">
           <button
             type="button"
@@ -356,15 +356,11 @@ function AppShell() {
               </span>
             </span>
           </button>
-          {globalControls}
+          <div className="md:hidden">{globalControls}</div>
         </header>
-      ) : (
-        <div className="fixed right-3 top-2.5 z-40 md:right-5">
-          {globalControls}
-        </div>
       )}
 
-      {/* 桌面端（≥md）：左侧悬浮高透液态玻璃胶囊（纯主导航，更轻盈通透） */}
+      {/* 桌面端（≥md）：左侧悬浮高透液态玻璃胶囊（主导航 + 全局语言/深浅切换） */}
       <nav
         aria-label="主导航"
         className="liquid-glass-rail fixed left-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-center gap-1.5 rounded-full px-2 py-2.5 md:flex"
@@ -392,6 +388,31 @@ function AppShell() {
             label={n.label}
           />
         ))}
+
+        <div className="my-1 h-px w-5 bg-ink-300/55" />
+
+        <DockButton
+          onClick={() => toggleUiLang()}
+          icon={
+            <span className="text-[12px] font-semibold tracking-tight">
+              {uiLang === "zh" ? "中" : "EN"}
+            </span>
+          }
+          label={copy.langTip}
+        />
+        <button
+          type="button"
+          onClick={handleToggleDarkMode}
+          aria-label={darkMode ? copy.themeToLight : copy.themeToDark}
+          className="dock-icon"
+        >
+          <span className="inline-flex transition-transform duration-300 ease-out">
+            {darkMode ? <IconSun size={18} /> : <IconMoon size={18} />}
+          </span>
+          <span className="dock-tip glass-tip" aria-hidden="true">
+            {darkMode ? copy.themeToLight : copy.themeToDark}
+          </span>
+        </button>
       </nav>
 
       {/* 移动端（<md）：无边框呼吸灵动圆球 + 径向环绕纯图标菜单 */}

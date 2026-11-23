@@ -13,6 +13,7 @@ import { stripHtml } from "../lib/utils";
 export default function ResumePreview({
   resume,
   onLayout,
+  onOpenOnePage,
   location,
   onLocate,
   tools,
@@ -20,6 +21,7 @@ export default function ResumePreview({
   resume: Resume;
   tools?: ReactNode;
   onLayout?: (pages: PageLayout[], measurement: ReturnType<typeof readResumeLayout>) => void;
+  onOpenOnePage?: () => void;
   location?: ResumeLocation | null;
   onLocate?: (sectionId: string, blockId?: string) => void;
 }) {
@@ -215,11 +217,28 @@ export default function ResumePreview({
             style={{ width: 794 * scale, minHeight: page.height * scale }}
           >
             <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
-              <p className="inline-flex items-center gap-1.5 rounded-full bg-surface/85 px-2.5 py-0.5 text-[10.5px] font-medium text-ink-500 ring-1 ring-ink-900/6">
-                {t(`A4 · 第 ${i + 1} / ${pages.length} 页`, `A4 · Page ${i + 1} of ${pages.length}`)}
-                {page.oversized &&
-                  t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="inline-flex items-center gap-1.5 rounded-full bg-surface/85 px-2.5 py-0.5 text-[10.5px] font-medium text-ink-500 ring-1 ring-ink-900/6">
+                  {t(`A4 · 第 ${i + 1} / ${pages.length} 页`, `A4 · Page ${i + 1} of ${pages.length}`)}
+                  {page.oversized &&
+                    t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
+                </p>
+                {onOpenOnePage && pages.length === 2 && i === 1 && !page.oversized && typeof page.capacity === "number" && typeof page.usedHeight === "number" && page.capacity > 0 && page.usedHeight / page.capacity <= 0.25 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenOnePage();
+                    }}
+                    className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[10.5px] font-medium text-brand-700 ring-1 ring-brand-200 transition-colors hover:bg-brand-100"
+                  >
+                    {t(
+                      `仅占 ${Math.max(1, Math.round((page.usedHeight / page.capacity) * 100))}% · 调为 1 页`,
+                      `${Math.max(1, Math.round((page.usedHeight / page.capacity) * 100))}% full · Fit 1p`
+                    )}
+                  </button>
+                )}
+              </div>
               <span className="truncate text-[10.5px] font-medium text-ink-400">
                 {tplLabel} · <span className="font-mono text-[10px]">210 × 297 mm</span>
               </span>

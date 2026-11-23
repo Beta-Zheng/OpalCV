@@ -629,10 +629,11 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
   return (
     <div className="flex h-full flex-col">
       <header
-        className="shrink-0 bg-page/90 px-3 py-2 pr-24 backdrop-blur sm:px-5 md:pr-28"
+        className="shrink-0 border-b border-line/60 bg-page/90 px-3 py-2 backdrop-blur sm:px-5"
         data-testid="editor-header"
       >
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 xl:flex-nowrap">
+        {/* 第一行：文档标题、保存状态与文档级操作 */}
+        <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <button
               className="tool-btn shrink-0 rounded-full"
@@ -644,111 +645,17 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
             <input
               aria-label="简历标题"
               title={resume.title}
-              className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[15.5px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300"
+              className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[15.5px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300 sm:max-w-md"
               value={resume.title}
               onChange={(e) => app.renameResume(resumeId, e.target.value)}
             />
-            <div className="hidden shrink-0 2xl:block">
+            <div className="hidden shrink-0 sm:block">
               <SaveIndicator />
             </div>
-            <div className="shrink-0 2xl:hidden"><SaveIndicator compact /></div>
+            <div className="shrink-0 sm:hidden"><SaveIndicator compact /></div>
           </div>
 
-          <div
-            className="liquid-glass relative order-3 flex w-full shrink-0 items-center justify-center rounded-full p-0.5 sm:order-none sm:w-auto xl:mx-auto"
-            role="tablist"
-            onKeyDown={navigateTabs}
-            aria-label={t("编辑视图", "Editor view")}
-          >
-            {(
-              [
-                ["content", t("写内容", "Write")],
-                ["layout", t("内容与预览", "Split")],
-                ["preview", t("仅预览", "Preview")],
-              ] as const
-            )
-              .filter(([mode]) => mode !== "layout" || canSplit)
-              .map(([mode, label]) => (
-                <button
-                  key={mode}
-                  role="tab"
-                  aria-selected={editorMode === mode}
-                  tabIndex={editorMode === mode ? 0 : -1}
-                  className={cx(
-                    "editor-view-tab min-h-7 shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[12.5px] transition-all",
-                    editorMode === mode
-                      ? "glass-lens font-semibold"
-                      : "text-ink-500 hover:text-ink-900"
-                  )}
-                  onClick={() => {
-                    setEditorMode(mode);
-                    closeAllPanels();
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-          </div>
-
-          <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:inline-flex">
-            <Btn
-              variant="ghost"
-              size="sm"
-              aria-pressed={outlineOpen}
-              className={cx(
-                "px-2.5",
-                outlineOpen && "bg-brand-50 text-brand-700"
-              )}
-              onClick={toggleOutline}
-            >
-              <IconBookOpen size={14} />
-              {t("目录", "Outline")}
-            </Btn>
-            <Btn
-              variant="ghost"
-              size="sm"
-              aria-pressed={rightOpen && panelTab === "ai"}
-              className={cx(
-                "px-2.5",
-                rightOpen && panelTab === "ai" && "bg-brand-50 text-brand-700"
-              )}
-              onClick={() => openRightPanel("ai", true)}
-            >
-              <IconPanelRight size={14} />
-              {t("建议", "AI Polish")}
-              {rightOpen && panelTab === "ai" && <span className="sp-dot" aria-hidden="true" />}
-            </Btn>
-            <Btn
-              size="sm"
-              aria-pressed={!!resume.target && rightOpen && panelTab === "jd"}
-              className={cx(
-                "px-2.5",
-                !!resume.target && rightOpen && panelTab === "jd" && "border-brand-400 bg-brand-50 text-brand-700"
-              )}
-              onClick={() => {
-                if (!resume.target) setTool("target");
-                else openRightPanel("jd", true);
-              }}
-            >
-              {resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
-            </Btn>
-
-            <EditorActionMenu
-              label={t("辅助工具", "Tools")}
-              ariaLabel={t("辅助工具", "Tools")}
-              items={[
-                { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
-                { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
-                { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
-                {
-                  label: showSteps ? t("隐藏流程进度", "Hide Workflow Bar") : t("显示流程进度", "Show Workflow Bar"),
-                  onSelect: () => setShowSteps((v) => !v),
-                },
-              ]}
-            />
-          </div>
-
-          <div className="ml-auto flex shrink-0 items-center gap-1 xl:ml-0">
+          <div className="flex shrink-0 items-center gap-1">
             <div className="hidden items-center gap-0.5 sm:inline-flex">
               <button
                 type="button"
@@ -833,6 +740,103 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
             >
               {t("导出", "Export")}
             </Btn>
+          </div>
+        </div>
+
+        {/* 第二行：视图切换与辅助工具栏 */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div
+            className="liquid-glass relative flex w-full shrink-0 items-center justify-center rounded-full p-0.5 sm:w-auto"
+            role="tablist"
+            onKeyDown={navigateTabs}
+            aria-label={t("编辑视图", "Editor view")}
+          >
+            {(
+              [
+                ["content", t("写内容", "Write")],
+                ["layout", t("内容与预览", "Split")],
+                ["preview", t("仅预览", "Preview")],
+              ] as const
+            )
+              .filter(([mode]) => mode !== "layout" || canSplit)
+              .map(([mode, label]) => (
+                <button
+                  key={mode}
+                  role="tab"
+                  aria-selected={editorMode === mode}
+                  tabIndex={editorMode === mode ? 0 : -1}
+                  className={cx(
+                    "editor-view-tab min-h-7 shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] transition-all",
+                    editorMode === mode
+                      ? "glass-lens font-semibold"
+                      : "text-ink-500 hover:text-ink-900"
+                  )}
+                  onClick={() => {
+                    setEditorMode(mode);
+                    closeAllPanels();
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+          </div>
+
+          <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:inline-flex">
+            <Btn
+              variant="ghost"
+              size="sm"
+              aria-pressed={outlineOpen}
+              className={cx(
+                "px-2.5",
+                outlineOpen && "bg-brand-50 text-brand-700"
+              )}
+              onClick={toggleOutline}
+            >
+              <IconBookOpen size={14} />
+              {t("目录", "Outline")}
+            </Btn>
+            <Btn
+              variant="ghost"
+              size="sm"
+              aria-pressed={rightOpen && panelTab === "ai"}
+              className={cx(
+                "px-2.5",
+                rightOpen && panelTab === "ai" && "bg-brand-50 text-brand-700"
+              )}
+              onClick={() => openRightPanel("ai", true)}
+            >
+              <IconPanelRight size={14} />
+              {t("建议", "AI Polish")}
+              {rightOpen && panelTab === "ai" && <span className="sp-dot" aria-hidden="true" />}
+            </Btn>
+            <Btn
+              size="sm"
+              aria-pressed={!!resume.target && rightOpen && panelTab === "jd"}
+              className={cx(
+                "px-2.5",
+                !!resume.target && rightOpen && panelTab === "jd" && "border-brand-400 bg-brand-50 text-brand-700"
+              )}
+              onClick={() => {
+                if (!resume.target) setTool("target");
+                else openRightPanel("jd", true);
+              }}
+            >
+              {resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
+            </Btn>
+
+            <EditorActionMenu
+              label={t("辅助工具", "Tools")}
+              ariaLabel={t("辅助工具", "Tools")}
+              items={[
+                { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
+                { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
+                { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
+                {
+                  label: showSteps ? t("隐藏流程进度", "Hide Workflow Bar") : t("显示流程进度", "Show Workflow Bar"),
+                  onSelect: () => setShowSteps((v) => !v),
+                },
+              ]}
+            />
           </div>
         </div>
       </header>
@@ -1093,7 +1097,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 )}
                 data-testid="live-preview"
               >
-                <ResumePreview resume={resume} onLayout={setLivePages}
+                <ResumePreview resume={resume} onLayout={setLivePages} onOpenOnePage={() => setOnePageOpen(true)}
                   tools={
                     <>
                       {editorMode === "layout" && previewLocation && (

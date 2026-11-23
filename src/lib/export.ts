@@ -1120,11 +1120,17 @@ async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null
     isAcademic ? loadCanvasImage(prep.data.school_badge_url) : Promise.resolve(null),
   ]);
 
-  const densitySpec = {
+  const baseDensitySpec = {
     compact: { secGap: 6.7, entryGap: 3.2, bulletGap: 1.3, lh: 1.32, headGap: 4.0, padX: 37.6, padY: 25.6 },
     medium: { secGap: 9.0, entryGap: 4.2, bulletGap: 1.9, lh: 1.38, headGap: 5.6, padX: 40.8, padY: 29.6 },
     loose: { secGap: 23.2, entryGap: 13.6, bulletGap: 6.7, lh: 1.75, headGap: 15.2, padX: 52.8, padY: 49.6 },
   }[effectiveDensity];
+  const densitySpec = {
+    ...baseDensitySpec,
+    lh: prep.theme.line_height ?? baseDensitySpec.lh,
+    padX: prep.theme.page_margin === "narrow" ? 30.4 : baseDensitySpec.padX,
+    padY: prep.theme.page_margin === "narrow" ? 21.6 : baseDensitySpec.padY,
+  };
 
   const renderPass = (scale: number, dryRun: boolean): number => {
     const padX = densitySpec.padX * scale;

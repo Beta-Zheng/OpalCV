@@ -341,8 +341,19 @@ export const DENSITY_VARS: Record<DensityKey, Record<string, string>> = {
   },
 };
 
-export function densityVars(key?: DensityKey): Record<string, string> {
-  return DENSITY_VARS[key ?? "medium"];
+export function densityVars(
+  key?: DensityKey,
+  overrides?: { line_height?: number; page_margin?: "standard" | "narrow" }
+): Record<string, string> {
+  const base = DENSITY_VARS[key ?? "medium"];
+  if (!overrides?.line_height && overrides?.page_margin !== "narrow") return base;
+  return {
+    ...base,
+    ...(overrides.line_height ? { "--lh": String(overrides.line_height) } : {}),
+    ...(overrides.page_margin === "narrow"
+      ? { "--page-pad-x": "1.9rem", "--page-pad-y": "1.35rem" }
+      : {}),
+  };
 }
 
 /** 解析某模块实际生效的要点列表样式：模块级设置 > 全局默认 > 菱形。

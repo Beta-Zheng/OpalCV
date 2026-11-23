@@ -138,6 +138,10 @@ export interface Resume {
     font_family?: FontKey;
     /** 布局紧凑度：紧凑 / 中等 / 宽松，用于一页简历的篇幅调节 */
     density?: DensityKey;
+    /** 自定义行高倍率（缺省跟随 density） */
+    line_height?: number;
+    /** 页边距预设：standard=默认 / narrow=窄边距（用于智能调页无损压缩） */
+    page_margin?: "standard" | "narrow";
     /** 条目头布局：row=标题居左·日期居右；stack=标题居上·信息居下 */
     header_layout?: HeaderLayoutKey;
     /** 要点列表样式：disc=圆点 / diamond=菱形 / arrow=箭头 / ordered=有序数字 */
