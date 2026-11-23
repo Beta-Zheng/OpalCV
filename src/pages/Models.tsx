@@ -836,7 +836,7 @@ export default function Models() {
                   )}
                   aria-hidden="true"
                 />
-                {sessionPassphrase ? t("已解锁", "Unlocked") : t("已锁定", "Locked")}
+                {sessionPassphrase ? t("加密已启用", "Encrypted") : t("已锁定", "Locked")}
               </span>
             )}
           </div>
@@ -921,17 +921,24 @@ export default function Models() {
                   {t("移除加密", "Decrypt All")}
                 </Btn>
               )}
-              <Btn
-                variant="ghost"
-                size="sm"
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center rounded-full bg-surface px-4 text-[12.5px] font-medium text-ink-700 shadow-xs ring-1 ring-ink-900/8 transition-colors hover:bg-surface/90 hover:text-ink-900 disabled:opacity-50"
                 disabled={cryptoBusy}
                 onClick={() => {
                   updateSessionPassphrase(null);
-                  toast("info", t("已锁定：会话主密码已从内存清除", "Locked: session passphrase cleared"));
+                  toast(
+                    "info",
+                    encryptedModels.length > 0
+                      ? t("已暂时锁定：主密码已从内存清除，已加密 Key 仍受保护", "Locked: passphrase cleared from memory; keys stay encrypted")
+                      : t("已取消本次主密码", "Session passphrase cleared")
+                  );
                 }}
               >
-                {t("锁定会话", "Lock Session")}
-              </Btn>
+                {encryptedModels.length > 0
+                  ? t("暂时锁定", "Lock Now")
+                  : t("取消主密码", "Cancel Passphrase")}
+              </button>
             </div>
           )}
         </section>
