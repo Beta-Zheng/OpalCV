@@ -115,7 +115,11 @@ export default function ResumePreview({
     if (!target) {
       clearHighlight.current?.();
       handled.current = location.requestId;
-      setNotice("该内容已隐藏或为空，未出现在预览中");
+      setNotice(
+        location.scroll !== false
+          ? "该内容已隐藏或为空，未出现在预览中"
+          : ""
+      );
       return;
     }
     const name = resume.data.sections.find(s => s.section_id === location.sectionId)?.title ?? "内容";
