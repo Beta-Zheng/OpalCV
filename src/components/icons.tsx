@@ -67,83 +67,61 @@ export const IconApplications = icon(ListChecks);
 export const IconMoreHorizontal = icon(MoreHorizontal);
 export const IconArchive = icon(Archive);
 
-/* ---------- 胶囊主导航 · 专属语义双调图标（随 currentColor 自适应浅/深色与选中态） ---------- */
+/* ---------- 胶囊主导航 · 清透纯线条图标（随 currentColor 自适应浅/深色与选中态） ---------- */
 
-/** 工作台：叠层简历卡片（带姓名与正文横线） */
+/** 工作台：2×2 现代极简网格 */
 export function IconNavWorkspace({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
-      <rect
-        x="4"
-        y="4"
-        width="7"
-        height="7"
-        rx="2"
-        fill="currentColor"
-        fillOpacity="0.16"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
-      <rect x="13" y="4" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.75" />
-      <rect x="4" y="13" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.75" />
-      <rect
-        x="13"
-        y="13"
-        width="7"
-        height="7"
-        rx="2"
-        fill="currentColor"
-        fillOpacity="0.12"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
+      <rect x="4" y="4" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="13" y="4" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="4" y="13" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="13" y="13" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   );
 }
 
-/** 投递记录：纸飞机投递轨迹（与卡片投递计数图标统一视觉语言） */
+/** 投递记录：纸飞机投递轨迹（清透纯线条） */
 export function IconNavApplications({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
       <path
         d="M20.6 3.7 13.7 20.1a.6.6 0 0 1-1.12-.04l-2.38-6.26-6.26-2.38a.6.6 0 0 1-.04-1.12L20.3 3.4a.25.25 0 0 1 .3.3Z"
-        fill="currentColor"
-        fillOpacity="0.12"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.7"
         strokeLinejoin="round"
       />
       <path
         d="M20.3 3.7 10.2 13.8"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.7"
         strokeLinecap="round"
       />
     </svg>
   );
 }
 
-/** 模型与隐私：隐私盾牌 + OpalCV 四芒 AI 星光 */
+/** 模型与隐私：隐私盾牌 + OpalCV 四芒 AI 星光（清透纯线条） */
 export function IconNavModels({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
       <path
         d="M12 3.2 5.2 5.9c-.44.18-.7.6-.7 1.08v4.62c0 4.66 3.16 8.05 7.5 9.2 4.34-1.15 7.5-4.54 7.5-9.2V6.98c0-.48-.26-.9-.7-1.08L12 3.2Z"
-        fill="currentColor"
-        fillOpacity="0.10"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.7"
         strokeLinejoin="round"
       />
       <path
-        d="M12 8.1c.34 2.15 1.05 2.86 3.2 3.2-2.15.34-2.86 1.05-3.2 3.2-.34-2.15-1.05-2.86-3.2-3.2 2.15-.34 2.86-1.05 3.2-3.2Z"
-        fill="currentColor"
+        d="M12 8.2c.32 2.05 1 2.73 3.05 3.05-2.05.32-2.73 1-3.05 3.05-.32-2.05-1-2.73-3.05-3.05 2.05-.32 2.73-1 3.05-3.05Z"
+        stroke="currentColor"
+        strokeWidth="1.45"
+        strokeLinejoin="round"
       />
     </svg>
   );
 }
 
-/** 设置与数据：现代圆润双滑块控制图标 */
+/** 数据管理：本地数据库 + 备份同步环（清透纯线条） */
 export function IconNavSettings({ size = 20, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
@@ -152,21 +130,19 @@ export function IconNavSettings({ size = 20, className = "" }: { size?: number; 
         cy="6.5"
         rx="6"
         ry="2.4"
-        fill="currentColor"
-        fillOpacity="0.16"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.7"
       />
       <path
         d="M4.5 6.5v5c0 1.3 2.7 2.4 6 2.4M4.5 11.5v5c0 1.3 2.7 2.4 6 2.4"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.7"
         strokeLinecap="round"
       />
       <path
         d="M16.5 13.2v-2m0 2h2m-2 0a3.5 3.5 0 0 1 3.3 4.7M16.5 19.8v2m0-2h-2m2 0a3.5 3.5 0 0 1-3.3-4.7"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.55"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

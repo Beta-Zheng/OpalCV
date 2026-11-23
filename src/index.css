@@ -844,23 +844,30 @@ html[data-theme="dark"] .soft-panel {
   width: 38px;
   height: 38px;
   border-radius: 9999px;
-  color: var(--color-ink-500);
+  color: #7A8194;
   transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   cursor: pointer;
 }
 .dock-icon:hover {
-  background: rgb(128 128 148 / 0.10);
-  color: var(--color-ink-900);
+  background: rgb(91 79 233 / 0.06);
+  color: #5B4FE9;
 }
 .dock-icon[aria-current="page"] {
-  background: linear-gradient(160deg, rgb(255 255 255 / 0.94), rgb(238 242 255 / 0.74));
-  color: #4338CA;
-  box-shadow: 0 4px 12px -3px rgb(79 70 229 / 0.20), inset 0 1px 0 rgb(255 255 255 / 0.96);
+  background: radial-gradient(circle at 50% 35%, rgb(255 255 255 / 0.92), rgb(243 244 255 / 0.72));
+  color: #5B4FE9;
+  box-shadow: 0 4px 14px -4px rgb(91 79 233 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.96);
+}
+html[data-theme="dark"] .dock-icon {
+  color: rgb(161 168 188 / 0.82);
+}
+html[data-theme="dark"] .dock-icon:hover {
+  background: rgb(129 140 248 / 0.12);
+  color: #C7D2FE;
 }
 html[data-theme="dark"] .dock-icon[aria-current="page"] {
-  background: linear-gradient(160deg, rgb(255 255 255 / 0.16), rgb(129 140 248 / 0.14));
-  color: #E0E7FF;
-  box-shadow: 0 6px 14px -4px rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.20);
+  background: radial-gradient(circle at 50% 35%, rgb(255 255 255 / 0.14), rgb(129 140 248 / 0.12));
+  color: #A5B4FC;
+  box-shadow: 0 6px 14px -4px rgb(0 0 0 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.18);
 }
 .dock-icon .dock-tip {
   position: absolute;
