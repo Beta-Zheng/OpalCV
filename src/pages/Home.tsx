@@ -976,10 +976,14 @@ export default function Home() {
                   <div className="grid max-h-80 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3">
                     {TEMPLATES.map((tpl) => {
                       const selected = blankTemplate === tpl.template_id;
+                      const sampleData = buildSampleResume(
+                        SAMPLE_CATALOG.find((s) => s.locale === locale)?.id ?? SAMPLE_CATALOG[0].id,
+                        audience
+                      );
                       const previewResume: Resume = {
                         id: "preview",
                         title: templateNameLabel(tpl.template_id, tpl.name, uiLang),
-                        data: emptyResume(),
+                        data: sampleData,
                         template_id: tpl.template_id,
                         theme: { primary_color: "#4F46E5", font_size: 14, font_family: "sans", density: "medium" },
                         created_at: "",

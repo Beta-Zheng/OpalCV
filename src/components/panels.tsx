@@ -218,12 +218,6 @@ export function OutlinePanel({
           </ul>
         </SortableContext>
       </DndContext>
-      <p className="mt-auto mx-2 mb-2 rounded-xl bg-subtle/70 px-3 py-2 text-[10.5px] leading-relaxed text-ink-500">
-        {t(
-          "顺序实时同步到预览与 PDF 导出；隐藏的模块保留位置但不渲染。",
-          "Order syncs live to preview and PDF export; hidden sections stay in place without rendering."
-        )}
-      </p>
     </div>
   );
 }
