@@ -134,6 +134,19 @@ export default function OnePageDialog({ resume, onClose, onEdit }: {
     const next = new Set(hidden); included ? next.delete(id) : next.add(id);
     setCustomHidden(next); setPlan('custom'); setPreviewOriginal(false);
   };
+  const applyToCurrent = () => {
+    if (!fits || !analysis || unchanged || latest.current !== analysis.source || useApp.getState().resumes.find(r => r.id === resume.id) !== resume) return;
+    const count = preview!.measurement.pages.length;
+    app.setTheme(resume.id, draft.theme);
+    app.setResumeOptions(resume.id, { page_limit: targetPages! });
+    for (const entry of entries) {
+      if (hidden.has(entry.block.block_id)) {
+        app.patchBlock(resume.id, entry.section.section_id, entry.block.block_id, { visible: false });
+      }
+    }
+    app.captureSnapshot(resume.id, `${count}页篇幅调整完成`);
+    onClose();
+  };
   const createCopy = () => {
     if (!fits || !analysis || unchanged || latest.current !== analysis.source || useApp.getState().resumes.find(r => r.id === resume.id) !== resume) return;
     const copyId = app.duplicateResume(resume.id); if (!copyId) return;
@@ -233,12 +246,20 @@ export default function OnePageDialog({ resume, onClose, onEdit }: {
       <Btn onClick={onClose}>{t('取消', 'Cancel')}</Btn>
       {unchanged && fits
         ? <Btn variant="primary" onClick={onClose}>{t('完成', 'Done')}</Btn>
-        : <Btn variant="primary" disabled={!fits} onClick={createCopy}>
-            {t(
-              `创建 ${fits ? preview!.measurement.pages.length : targetPages ?? '—'} 页副本${hidden.size > 0 ? `（隐藏 ${hidden.size} 项）` : ''}`,
-              `Save ${fits ? preview!.measurement.pages.length : targetPages ?? '—'}-Page Copy${hidden.size > 0 ? ` (${hidden.size} hidden)` : ''}`
-            )}
-          </Btn>}
+        : <>
+            <Btn variant="outline" disabled={!fits} onClick={applyToCurrent}>
+              {t(
+                `应用到当前简历（${fits ? preview!.measurement.pages.length : targetPages ?? '—'} 页）`,
+                `Apply to Current (${fits ? preview!.measurement.pages.length : targetPages ?? '—'}p)`
+              )}
+            </Btn>
+            <Btn variant="primary" disabled={!fits} onClick={createCopy}>
+              {t(
+                `创建 ${fits ? preview!.measurement.pages.length : targetPages ?? '—'} 页副本${hidden.size > 0 ? `（隐藏 ${hidden.size} 项）` : ''}`,
+                `Save ${fits ? preview!.measurement.pages.length : targetPages ?? '—'}-Page Copy${hidden.size > 0 ? ` (${hidden.size} hidden)` : ''}`
+              )}
+            </Btn>
+          </>}
     </div>
   </Modal>;
 }

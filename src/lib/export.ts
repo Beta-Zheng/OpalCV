@@ -1,6 +1,6 @@
 import type { Block, BulletStyleKey, Resume, Section } from "../types";
 import { localizedResume, blockHasContent } from "./workflow";
-import { resolveBulletStyle, stripHtml } from "./utils";
+import { fontStack, resolveBulletStyle, stripHtml } from "./utils";
 
 export function plainText(value: string): string {
   return stripHtml(
@@ -891,6 +891,42 @@ function buildVectorPdf(pages: Resume[]): Uint8Array {
   return assemblePdf(objects);
 }
 
+function tokenizeForWrap(text: string): string[] {
+  return text.match(/[A-Za-z0-9_+#./%&@'-]+|\s+|[\s\S]/g) ?? [];
+}
+
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
+
+async function loadCanvasImage(url?: string): Promise<HTMLImageElement | null> {
+  if (!url || typeof Image === "undefined") return null;
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = url;
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null> {
   if (typeof document === "undefined") return null;
   const canvas = document.createElement("canvas");
@@ -902,229 +938,894 @@ async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null
   if (!ctx) return null;
 
   const prep = localizedResume(resume);
-  const primaryHex = normalizeHexColor(prep.theme.primary_color, "4F46E5");
+  const tpl = prep.template_id;
+  const isATS = tpl === "classic_ats";
+  const isLatex = tpl === "latex_minimal";
+  const isCampus = tpl === "campus_compact";
+  const isSwiss = tpl === "swiss_grid";
+  const isSidebar = tpl === "executive_sidebar";
+  const isAcademic = tpl === "academic_photo";
+
+  const rawPrimary = normalizeHexColor(prep.theme.primary_color, "4F46E5");
+  const primaryHex = isATS || isLatex ? "111111" : rawPrimary;
   const primaryCss = `#${primaryHex}`;
-  const scale = 2;
-  const margin = 46 * scale;
-  let y = margin + 12 * scale;
-  const fontStackCss =
-    '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
-  const baseFs = (prep.theme.font_size || 14) * scale;
 
-  ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, W, H);
+  const effectiveDensity =
+    prep.theme.density ?? (isCampus || isLatex ? "compact" : "medium");
+  const effectiveFont =
+    prep.theme.font_family ?? (isLatex ? "serif" : "sans");
+  const fontStackCss = fontStack(effectiveFont);
+  const headerLayout = prep.theme.header_layout ?? "row";
 
-  const setFont = (sizePx: number, bold?: boolean, italic?: boolean) => {
-    ctx.font = `${italic ? "italic " : ""}${bold ? "700 " : "400 "}${Math.round(
-      sizePx
-    )}px ${fontStackCss}`;
-  };
+  const [avatarImg, badgeImg] = await Promise.all([
+    isAcademic ? loadCanvasImage(prep.data.avatar_url) : Promise.resolve(null),
+    isAcademic ? loadCanvasImage(prep.data.school_badge_url) : Promise.resolve(null),
+  ]);
 
-  const drawWrappedRuns = (
-    runs: InlineRun[],
-    x: number,
-    maxW: number,
-    sizePx: number,
-    lineH: number
-  ) => {
-    let cx = x;
-    for (const r of runs) {
-      if (r.lineBreak) {
-        y += lineH;
-        cx = x;
-        continue;
-      }
-      setFont(sizePx, r.bold, r.italic);
-      ctx.fillStyle = r.color ? `#${r.color}` : "#222A28";
-      // Split by character for CJK-safe wrapping
-      for (const ch of r.text) {
-        const w = ctx.measureText(ch).width;
-        if (cx + w > x + maxW && cx > x) {
-          y += lineH;
+  const densitySpec = {
+    compact: { secGap: 6.7, entryGap: 3.2, bulletGap: 1.3, lh: 1.32, headGap: 4.0, padX: 37.6, padY: 25.6 },
+    medium: { secGap: 9.0, entryGap: 4.2, bulletGap: 1.9, lh: 1.38, headGap: 5.6, padX: 40.8, padY: 29.6 },
+    loose: { secGap: 23.2, entryGap: 13.6, bulletGap: 6.7, lh: 1.75, headGap: 15.2, padX: 52.8, padY: 49.6 },
+  }[effectiveDensity];
+
+  const renderPass = (scale: number, dryRun: boolean): number => {
+    const padX = densitySpec.padX * scale;
+    const padY = densitySpec.padY * scale;
+    const secGap = densitySpec.secGap * scale;
+    const entryGap = densitySpec.entryGap * scale;
+    const bulletGap = densitySpec.bulletGap * scale;
+    const headGap = densitySpec.headGap * scale;
+    const lh = densitySpec.lh;
+    const baseFs = (prep.theme.font_size || 14) * scale;
+
+    if (!dryRun) {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, W, H);
+      ctx.textBaseline = "alphabetic";
+    }
+
+    const setFont = (sizePx: number, bold?: boolean, italic?: boolean) => {
+      ctx.font = `${italic ? "italic " : ""}${bold ? "700 " : "400 "}${Math.round(
+        sizePx
+      )}px ${fontStackCss}`;
+    };
+
+    const drawWrappedRuns = (
+      runs: InlineRun[],
+      x: number,
+      maxW: number,
+      sizePx: number,
+      lineH: number,
+      startY: number,
+      firstLineOffset = 0
+    ): number => {
+      let curY = startY + sizePx * 0.88;
+      let cx = x + firstLineOffset;
+      let hasDrawn = false;
+      for (const r of runs) {
+        if (r.lineBreak) {
+          curY += lineH;
           cx = x;
+          continue;
         }
-        ctx.fillText(ch, cx, y);
-        cx += w;
+        setFont(sizePx, r.bold, r.italic);
+        if (!dryRun) ctx.fillStyle = r.color ? `#${r.color}` : isATS || isLatex ? "#1A1A1A" : "#222A28";
+        const tokens = tokenizeForWrap(r.text);
+        for (const tok of tokens) {
+          const isSpace = /^\s+$/.test(tok);
+          if (isSpace && cx === x) continue;
+          const w = ctx.measureText(tok).width;
+          if (cx + w > x + maxW && cx > x) {
+            curY += lineH;
+            cx = x;
+            if (isSpace) continue;
+          }
+          if (w > maxW) {
+            for (const ch of tok) {
+              const cw = ctx.measureText(ch).width;
+              if (cx + cw > x + maxW && cx > x) {
+                curY += lineH;
+                cx = x;
+              }
+              if (!dryRun) ctx.fillText(ch, cx, curY);
+              cx += cw;
+              hasDrawn = true;
+            }
+          } else {
+            if (!dryRun) ctx.fillText(tok, cx, curY);
+            cx += w;
+            hasDrawn = true;
+          }
+        }
       }
-    }
-    y += lineH;
-  };
+      return hasDrawn ? curY + (lineH - sizePx * 0.88) : startY;
+    };
 
-  // Optional avatar in browser canvas
-  let headerRightReserve = 0;
-  if (prep.data.avatar_url) {
-    try {
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const el = new Image();
-        el.onload = () => resolve(el);
-        el.onerror = reject;
-        el.src = prep.data.avatar_url!;
-      });
-      const avScale = Math.min(2, Math.max(0.5, prep.theme.avatar_scale ?? 1));
-      const avW = Math.round(78 * scale * avScale);
-      const avH = Math.round(108 * scale * avScale);
-      ctx.drawImage(img, W - margin - avW, margin, avW, avH);
-      headerRightReserve = avW + 20 * scale;
-    } catch {
-      // Ignore unloadable avatar URL in canvas
-    }
-  }
+    const drawCenteredText = (
+      text: string,
+      centerX: number,
+      maxW: number,
+      sizePx: number,
+      lineH: number,
+      startY: number,
+      opts: { bold?: boolean; italic?: boolean; color?: string } = {}
+    ): number => {
+      const clean = plainText(text).trim();
+      if (!clean) return startY;
+      setFont(sizePx, opts.bold, opts.italic);
+      if (!dryRun) ctx.fillStyle = opts.color ?? "#111111";
+      const tokens = tokenizeForWrap(clean);
+      const lines: string[] = [];
+      let cur = "";
+      for (const tok of tokens) {
+        const next = cur + tok;
+        if (ctx.measureText(next).width > maxW && cur.trim()) {
+          lines.push(cur.trim());
+          cur = tok.trimStart();
+        } else {
+          cur = next;
+        }
+      }
+      if (cur.trim()) lines.push(cur.trim());
+      let curY = startY + sizePx * 0.88;
+      for (const ln of lines) {
+        const lw = ctx.measureText(ln).width;
+        if (!dryRun) ctx.fillText(ln, centerX - lw / 2, curY);
+        curY += lineH;
+      }
+      return curY - sizePx * 0.88;
+    };
 
-  const basicVisible =
-    prep.data.sections.find((s) => s.type === "basic_info")?.visible !== false;
-  if (basicVisible) {
+    const drawSkillChips = (
+      skills: string[],
+      x: number,
+      maxW: number,
+      startY: number,
+      pillRound: boolean
+    ): number => {
+      const chipFs = baseFs * (pillRound ? 0.76 : 0.78);
+      setFont(chipFs, true, false);
+      const padH = (pillRound ? 8 : 6) * scale;
+      const chipH = chipFs * 1.48;
+      const gapX = 4.5 * scale;
+      const gapY = 4.5 * scale;
+      let cx = x;
+      let curY = startY;
+      for (const sk of skills) {
+        const label = plainText(sk).trim();
+        if (!label) continue;
+        const tw = ctx.measureText(label).width;
+        const cw = Math.min(maxW, tw + padH * 2);
+        if (cx + cw > x + maxW && cx > x) {
+          cx = x;
+          curY += chipH + gapY;
+        }
+        if (!dryRun) {
+          drawRoundedRect(ctx, cx, curY, cw, chipH, pillRound ? chipH / 2 : 3 * scale);
+          ctx.fillStyle = `#${primaryHex}17`;
+          ctx.fill();
+          ctx.strokeStyle = `#${primaryHex}33`;
+          ctx.lineWidth = Math.max(1, 0.8 * scale);
+          ctx.stroke();
+          ctx.fillStyle = primaryCss;
+          ctx.fillText(label, cx + padH, curY + chipFs * 1.06);
+        }
+        cx += cw + gapX;
+      }
+      return curY + chipH;
+    };
+
+    let y = padY;
+    const contentW = W - padX * 2;
+    const basicSection = prep.data.sections.find((s) => s.type === "basic_info");
+    const basicVisible = basicSection?.visible ?? true;
     const info = prep.data.basic_info;
-    const headerMaxW = W - margin * 2 - headerRightReserve;
-    if (info.name.trim()) {
-      drawWrappedRuns(
-        parseInlineRuns(info.name, { bold: true, color: primaryHex }),
-        margin,
-        headerMaxW,
-        baseFs * 1.9,
-        baseFs * 2.3
-      );
-    }
-    if (info.title.trim()) {
-      drawWrappedRuns(
-        parseInlineRuns(info.title, { bold: true, color: primaryHex }),
-        margin,
-        headerMaxW,
-        baseFs * 1.08,
-        baseFs * 1.5
-      );
-    }
-    const contacts = [
+    const sepChar = prep.locale === "en" ? ": " : "：";
+    const contactList = [
       info.email,
       info.phone,
       info.location,
       info.website,
       ...(info.custom_fields ?? [])
-        .filter((f) => f.label.trim() && f.value.trim())
-        .map((f) => `${f.label}: ${f.value}`),
-    ]
-      .filter(Boolean)
-      .join(" | ");
-    if (contacts.trim()) {
-      drawWrappedRuns(
-        parseInlineRuns(contacts, { color: "555F5C" }),
-        margin,
-        headerMaxW,
-        baseFs * 0.86,
-        baseFs * 1.35
-      );
-    }
-    y += 12 * scale;
-  }
+        .filter((f) => f.label?.trim() && f.value?.trim())
+        .map((f) => `${f.label.trim()}${sepChar}${f.value.trim()}`),
+    ].filter(Boolean);
 
-  const bodySections = [...prep.data.sections]
-    .filter(
-      (s) =>
-        s.visible &&
-        s.type !== "basic_info" &&
-        s.blocks.some((b) => b.visible && blockHasContent(b))
-    )
-    .sort((a, b) => a.order - b.order);
-
-  const drawSection = (s: Section, x: number, colW: number) => {
-    if (y > H - margin) return;
-    setFont(baseFs * 1.15, true, false);
-    ctx.fillStyle = primaryCss;
-    ctx.fillText(s.title, x, y);
-    y += 8 * scale;
-    ctx.fillStyle = primaryCss;
-    ctx.fillRect(x, y, colW, 1.5 * scale);
-    y += 18 * scale;
-
-    const defaultBullet =
-      prep.theme.bullet_style ??
-      (prep.template_id === "classic_ats" ? "disc" : "diamond");
-    const bulletStyle = resolveBulletStyle(s.bullet_style, defaultBullet);
-    const blocks = [...s.blocks]
-      .filter((b) => b.visible && blockHasContent(b))
-      .sort((a, b) => a.order - b.order);
-
-    for (const b of blocks) {
-      if (y > H - margin) break;
-      const header = [b.title, b.subtitle, ...(b.subtitles ?? [])]
-        .filter(Boolean)
-        .join(" · ");
-      if (header.trim()) {
-        drawWrappedRuns(
-          parseInlineRuns(header, { bold: true }),
-          x,
-          colW,
-          baseFs,
-          baseFs * 1.4
-        );
-      }
-      const meta = [
-        [b.start_date, b.end_date].filter(Boolean).join(" – "),
-        b.location,
-      ]
-        .filter(Boolean)
-        .join(" | ");
-      if (meta.trim()) {
-        drawWrappedRuns(
-          parseInlineRuns(meta, { color: "64716C" }),
-          x,
-          colW,
-          baseFs * 0.85,
-          baseFs * 1.25
-        );
-      }
-      if (b.description.trim()) {
-        drawWrappedRuns(
-          parseInlineRuns(b.description),
-          x,
-          colW,
-          baseFs * 0.94,
-          baseFs * 1.4
-        );
-      }
-      let seq = 0;
-      b.bullets.forEach((bullet, idx) => {
-        if (!bullet.trim() || y > H - margin) return;
-        const marked = b.bullet_marks?.[idx] !== false;
-        const runs: InlineRun[] = [];
-        if (marked) {
-          seq += 1;
-          runs.push({
-            text: formatBulletPrefix(bulletStyle, seq),
-            bold: bulletStyle === "ordered",
-            color: primaryHex,
+    // ==================== 1. HEADER RENDERING ====================
+    if (basicVisible && (info.name || info.title || contactList.length > 0)) {
+      if (isLatex || isATS) {
+        const nameFs = baseFs * (isLatex ? 2.05 : 2.1);
+        y = drawCenteredText(info.name || "Untitled", W / 2, contentW, nameFs, nameFs * 1.22, y, {
+          bold: true,
+          color: "#111111",
+        });
+        if (info.title.trim()) {
+          y += 2 * scale;
+          const titleFs = baseFs * (isLatex ? 0.96 : 1.05);
+          y = drawCenteredText(info.title, W / 2, contentW, titleFs, titleFs * 1.32, y, {
+            italic: isLatex,
+            bold: !isLatex,
+            color: "#333333",
           });
         }
-        runs.push(...parseInlineRuns(bullet));
-        drawWrappedRuns(runs, x, colW, baseFs * 0.92, baseFs * 1.38);
-      });
-      if (b.skills.length > 0) {
-        drawWrappedRuns(
-          parseInlineRuns(b.skills.join(" · ")),
+        if (contactList.length > 0) {
+          y += 4 * scale;
+          const cFs = baseFs * 0.84;
+          y = drawCenteredText(contactList.join("  |  "), W / 2, contentW, cFs, cFs * 1.35, y, {
+            color: "#333333",
+          });
+        }
+        y += secGap;
+      } else if (isSwiss) {
+        const leftColW = 116 * scale;
+        const colGap = 20 * scale;
+        const rightX = padX + leftColW + colGap;
+        const rightW = contentW - leftColW - colGap;
+        const nameFs = baseFs * 2.2;
+        setFont(nameFs, true, false);
+        const nameStr = plainText(info.name || "未命名");
+        const nameBaseline = y + nameFs * 0.88;
+        if (!dryRun) {
+          ctx.fillStyle = "#1B1C1F";
+          ctx.fillText(nameStr, rightX, nameBaseline);
+          // 左侧顶部胶囊色块
+          drawRoundedRect(ctx, padX, nameBaseline - 8 * scale, 40 * scale, 6 * scale, 3 * scale);
+          ctx.fillStyle = primaryCss;
+          ctx.fill();
+        }
+        if (info.title.trim()) {
+          const tFs = baseFs * 1.02;
+          setFont(tFs, true, false);
+          const tStr = plainText(info.title);
+          const tw = ctx.measureText(tStr).width;
+          if (!dryRun) {
+            ctx.fillStyle = primaryCss;
+            ctx.fillText(tStr, Math.max(rightX, padX + contentW - tw), nameBaseline);
+          }
+        }
+        y += nameFs * 1.18;
+        if (contactList.length > 0) {
+          y += 4 * scale;
+          y = drawWrappedRuns(
+            parseInlineRuns(contactList.join("  ·  "), { color: "64716C" }),
+            rightX,
+            rightW,
+            baseFs * 0.82,
+            baseFs * 1.28,
+            y
+          );
+        }
+        y += headGap;
+        if (!dryRun) {
+          ctx.fillStyle = "#1B1C1F";
+          ctx.fillRect(padX, y, contentW, 2 * scale);
+        }
+        y += secGap;
+      } else if (isSidebar) {
+        const cardPadX = 20 * scale;
+        const cardPadY = 15 * scale;
+        const innerX = padX + cardPadX;
+        const innerW = contentW - cardPadX * 2;
+        const nameFs = baseFs * 2.05;
+        let innerY = y + cardPadY;
+        const nameBase = innerY + nameFs * 0.88;
+        let contactsEndY = innerY + nameFs * 1.15;
+        if (contactList.length > 0) {
+          contactsEndY = drawWrappedRuns(
+            parseInlineRuns(contactList.join("  ·  "), { color: "475569" }),
+            innerX,
+            innerW,
+            baseFs * 0.82,
+            baseFs * 1.28,
+            contactsEndY + 4 * scale
+          );
+        }
+        const boxH = contactsEndY - y + cardPadY;
+        if (!dryRun) {
+          drawRoundedRect(ctx, padX, y, contentW, boxH, 12 * scale);
+          ctx.fillStyle = `#${primaryHex}0D`;
+          ctx.fill();
+          ctx.fillStyle = primaryCss;
+          ctx.fillRect(padX, y + 4 * scale, 4 * scale, boxH - 8 * scale);
+          setFont(nameFs, true, false);
+          ctx.fillStyle = "#101817";
+          ctx.fillText(plainText(info.name || "未命名"), innerX, nameBase);
+          if (info.title.trim()) {
+            const tFs = baseFs * 1.04;
+            setFont(tFs, true, false);
+            const tStr = plainText(info.title);
+            const tw = ctx.measureText(tStr).width;
+            ctx.fillStyle = primaryCss;
+            ctx.fillText(tStr, Math.max(innerX, padX + contentW - cardPadX - tw), nameBase);
+          }
+          if (contactList.length > 0) {
+            drawWrappedRuns(
+              parseInlineRuns(contactList.join("  ·  "), { color: "475569" }),
+              innerX,
+              innerW,
+              baseFs * 0.82,
+              baseFs * 1.28,
+              innerY + nameFs * 1.15 + 4 * scale
+            );
+          }
+        }
+        y += boxH + secGap;
+      } else if (isCampus) {
+        const nameFs = baseFs * 1.95;
+        setFont(nameFs, true, false);
+        const nameStr = plainText(info.name || "未命名");
+        const nameBase = y + nameFs * 0.88;
+        if (!dryRun) {
+          ctx.fillStyle = "#101817";
+          ctx.fillText(nameStr, padX, nameBase);
+        }
+        const nameW = ctx.measureText(nameStr).width;
+        const roleStr = plainText(info.title || prep.target?.job_title || "").trim();
+        if (roleStr) {
+          const rFs = baseFs * 0.86;
+          setFont(rFs, true, false);
+          const rw = ctx.measureText(roleStr).width;
+          const pillW = rw + 20 * scale;
+          const pillH = rFs * 1.55;
+          const pillX = padX + nameW + 10 * scale;
+          const pillY = nameBase - rFs * 1.1;
+          if (!dryRun) {
+            drawRoundedRect(ctx, pillX, pillY, pillW, pillH, pillH / 2);
+            ctx.fillStyle = `#${primaryHex}15`;
+            ctx.fill();
+            ctx.strokeStyle = `#${primaryHex}33`;
+            ctx.lineWidth = Math.max(1, 0.8 * scale);
+            ctx.stroke();
+            ctx.fillStyle = primaryCss;
+            ctx.fillText(roleStr, pillX + 10 * scale, pillY + rFs * 1.1);
+          }
+        }
+        y += nameFs * 1.18;
+        if (contactList.length > 0) {
+          y += 3 * scale;
+          y = drawWrappedRuns(
+            parseInlineRuns(contactList.join("  |  "), { color: "64716C" }),
+            padX,
+            contentW,
+            baseFs * 0.82,
+            baseFs * 1.26,
+            y
+          );
+        }
+        y += headGap;
+        if (!dryRun) {
+          ctx.fillStyle = `#${primaryHex}30`;
+          ctx.fillRect(padX, y, contentW, Math.max(1, 1 * scale));
+        }
+        y += secGap;
+      } else if (isAcademic) {
+        const avScale = Math.min(2, Math.max(0.5, prep.theme.avatar_scale ?? 1));
+        const avW = avatarImg ? Math.round(90 * scale * avScale) : 0;
+        const avH = avatarImg ? Math.round(126 * scale * avScale) : 0;
+        const badgeS = badgeImg ? Math.round(76 * scale) : 0;
+        const leftX = padX + (avW ? avW + 20 * scale : 0);
+        const midW = contentW - (avW ? avW + 20 * scale : 0) - (badgeS ? badgeS + 20 * scale : 0);
+        const startHeaderY = y;
+        if (!dryRun && avatarImg) {
+          ctx.drawImage(avatarImg, padX, startHeaderY, avW, avH);
+        }
+        if (!dryRun && badgeImg) {
+          ctx.drawImage(badgeImg, padX + contentW - badgeS, startHeaderY + 4 * scale, badgeS, badgeS);
+        }
+        const nameFs = baseFs * 2.15;
+        y = drawWrappedRuns(
+          parseInlineRuns(info.name || "未命名", { bold: true, color: "101817" }),
+          leftX,
+          midW,
+          nameFs,
+          nameFs * 1.18,
+          y
+        );
+        if (info.title.trim()) {
+          y += 2 * scale;
+          y = drawWrappedRuns(
+            parseInlineRuns(info.title, { bold: true, color: primaryHex }),
+            leftX,
+            midW,
+            baseFs * 1.05,
+            baseFs * 1.35,
+            y
+          );
+        }
+        if (contactList.length > 0) {
+          y += 4 * scale;
+          y = drawWrappedRuns(
+            parseInlineRuns(contactList.join("   |   "), { color: "64716C" }),
+            leftX,
+            midW,
+            baseFs * 0.85,
+            baseFs * 1.3,
+            y
+          );
+        }
+        y = Math.max(y, startHeaderY + avH, startHeaderY + badgeS) + secGap;
+      } else {
+        // modern_single_column (现代单栏：带右上角首字徽章)
+        const showMonogram = prep.locale !== "en";
+        const monoSize = 44 * scale;
+        const headerTextW = showMonogram ? contentW - monoSize - 16 * scale : contentW;
+        const startHeaderY = y;
+        const nameFs = baseFs * 2.25;
+        y = drawWrappedRuns(
+          parseInlineRuns(info.name || "未命名", { bold: true, color: "101817" }),
+          padX,
+          headerTextW,
+          nameFs,
+          nameFs * 1.16,
+          y
+        );
+        if (info.title.trim()) {
+          y += 2 * scale;
+          y = drawWrappedRuns(
+            parseInlineRuns(info.title, { bold: true, color: primaryHex }),
+            padX,
+            headerTextW,
+            baseFs * 1.08,
+            baseFs * 1.35,
+            y
+          );
+        }
+        if (!dryRun && showMonogram) {
+          const mx = padX + contentW - monoSize;
+          const my = startHeaderY + 4 * scale;
+          drawRoundedRect(ctx, mx, my, monoSize, monoSize, 12 * scale);
+          ctx.fillStyle = primaryCss;
+          ctx.fill();
+          const firstChar = (plainText(info.name).trim() || "?").slice(0, 1);
+          setFont(baseFs * 1.35, true, false);
+          ctx.fillStyle = "#FFFFFF";
+          const cw = ctx.measureText(firstChar).width;
+          ctx.fillText(firstChar, mx + (monoSize - cw) / 2, my + monoSize * 0.66);
+        }
+        if (contactList.length > 0) {
+          y += headGap * 0.8;
+          y = drawWrappedRuns(
+            parseInlineRuns(contactList.join("   |   "), { color: "64716C" }),
+            padX,
+            contentW,
+            baseFs * 0.85,
+            baseFs * 1.3,
+            y
+          );
+        }
+        y += secGap;
+      }
+    }
+
+    // ==================== 2. ENTRY & SECTION RENDERING ====================
+    const drawEntryBlock = (
+      b: Block,
+      x: number,
+      colW: number,
+      curY: number,
+      secBulletStyle: BulletStyleKey,
+      entryHeaderMode: "row" | "stack"
+    ): number => {
+      let ey = curY;
+      const dateStr = [b.start_date, b.end_date].filter(Boolean).join(" – ");
+      const subParts = [b.subtitle, ...(b.subtitles ?? [])].filter(Boolean);
+
+      if (isLatex) {
+        if (b.type === "skill_group" && (b.skills.length > 0 || b.description.trim())) {
+          const runs: InlineRun[] = [];
+          if (b.title.trim()) {
+            runs.push(...parseInlineRuns(`${b.title.trim()}:`, { bold: true, color: "111111" }));
+            runs.push({ text: " ", color: "111111" });
+          }
+          const bodyStr = b.description.trim() || b.skills.join(", ");
+          runs.push(...parseInlineRuns(bodyStr, { color: "1A1A1A" }));
+          ey = drawWrappedRuns(runs, x, colW, baseFs * 0.91, baseFs * 0.91 * lh, ey);
+          return ey + bulletGap * 1.1;
+        }
+        if (b.title.trim() || dateStr) {
+          const tFs = baseFs * 1.01;
+          let dateW = 0;
+          if (dateStr) {
+            setFont(baseFs * 0.86, false, false);
+            dateW = ctx.measureText(dateStr).width;
+            if (!dryRun) {
+              ctx.fillStyle = "#222222";
+              ctx.fillText(dateStr, x + colW - dateW, ey + tFs * 0.88);
+            }
+          }
+          ey = drawWrappedRuns(
+            parseInlineRuns(b.title, { bold: true, color: "111111" }),
+            x,
+            colW - (dateW ? dateW + 12 * scale : 0),
+            tFs,
+            tFs * 1.26,
+            ey
+          );
+        }
+        const subText = subParts.join(" · ");
+        if (subText || b.location.trim()) {
+          const sFs = baseFs * 0.91;
+          let locW = 0;
+          if (b.location.trim()) {
+            setFont(baseFs * 0.9, false, true);
+            locW = ctx.measureText(b.location.trim()).width;
+            if (!dryRun) {
+              ctx.fillStyle = "#333333";
+              ctx.fillText(b.location.trim(), x + colW - locW, ey + sFs * 0.88);
+            }
+          }
+          if (subText) {
+            ey = drawWrappedRuns(
+              parseInlineRuns(subText, { italic: true, color: "333333" }),
+              x,
+              colW - (locW ? locW + 12 * scale : 0),
+              sFs,
+              sFs * 1.26,
+              ey
+            );
+          } else {
+            ey += sFs * 1.26;
+          }
+        }
+      } else {
+        // 标准 / ATS / 学术 / 校招 / 瑞士 / 双栏条目头
+        const hasTitleLine = b.title.trim() || subParts.length > 0;
+        const titleRuns: InlineRun[] = [
+          ...parseInlineRuns(b.title, { bold: true, color: isATS ? "111111" : "101817" }),
+        ];
+        for (const sp of subParts) {
+          titleRuns.push({ text: " · ", color: "94A3B8" });
+          titleRuns.push(...parseInlineRuns(sp, { color: isATS ? "333333" : "64716C" }));
+        }
+        if (hasTitleLine) {
+          const tFs = baseFs * 1.01;
+          if (entryHeaderMode !== "stack" && (dateStr || (isAcademic && b.location.trim()))) {
+            const rightMeta = isAcademic
+              ? [dateStr, b.location.trim()].filter(Boolean).join("  ")
+              : dateStr;
+            setFont(baseFs * 0.82, false, false);
+            const rw = ctx.measureText(rightMeta).width;
+            if (!dryRun) {
+              ctx.fillStyle = isATS ? "#222222" : "#64716C";
+              ctx.fillText(rightMeta, x + colW - rw, ey + tFs * 0.88);
+            }
+            ey = drawWrappedRuns(
+              titleRuns,
+              x,
+              Math.max(colW * 0.5, colW - rw - 12 * scale),
+              tFs,
+              tFs * 1.28,
+              ey
+            );
+          } else {
+            ey = drawWrappedRuns(titleRuns, x, colW, tFs, tFs * 1.28, ey);
+          }
+        }
+        if (entryHeaderMode === "stack" && (dateStr || b.location.trim())) {
+          const metaStr = [dateStr, b.location.trim()].filter(Boolean).join("  ");
+          ey = drawWrappedRuns(
+            parseInlineRuns(metaStr, { color: "828E8A" }),
+            x,
+            colW,
+            baseFs * 0.8,
+            baseFs * 1.2,
+            ey
+          );
+        } else if (!isAcademic && b.location.trim()) {
+          ey = drawWrappedRuns(
+            parseInlineRuns(b.location.trim(), { color: isATS ? "333333" : "828E8A" }),
+            x,
+            colW,
+            baseFs * 0.82,
+            baseFs * 1.2,
+            ey
+          );
+        }
+      }
+
+      if (b.description.trim()) {
+        ey += bulletGap;
+        ey = drawWrappedRuns(
+          parseInlineRuns(b.description, { color: isATS || isLatex ? "222222" : "2B3A36" }),
           x,
           colW,
-          baseFs * 0.9,
-          baseFs * 1.35
+          baseFs * 0.92,
+          baseFs * 0.92 * lh,
+          ey
         );
       }
-      y += 6 * scale;
+
+      const validBullets = b.bullets.filter((bl) => bl.trim());
+      if (validBullets.length > 0) {
+        ey += entryGap * 0.65;
+        let seq = 0;
+        const bFs = baseFs * 0.92;
+        const bLh = bFs * lh;
+        const indent = 13 * scale;
+        b.bullets.forEach((bullet, idx) => {
+          if (!bullet.trim()) return;
+          const marked = b.bullet_marks?.[idx] !== false;
+          if (marked) {
+            seq += 1;
+            if (!dryRun) {
+              const markerY = ey + bFs * 0.85;
+              const markerColor = isATS || isLatex ? "#111111" : primaryCss;
+              ctx.fillStyle = markerColor;
+              if (secBulletStyle === "ordered") {
+                setFont(bFs * 0.86, true, false);
+                ctx.fillText(`${seq}.`, x, markerY);
+              } else if (secBulletStyle === "disc" || isLatex || isATS) {
+                ctx.beginPath();
+                ctx.arc(x + 3 * scale, markerY - bFs * 0.28, 2.3 * scale, 0, Math.PI * 2);
+                ctx.fill();
+              } else if (secBulletStyle === "circle") {
+                ctx.strokeStyle = markerColor;
+                ctx.lineWidth = 1.4 * scale;
+                ctx.beginPath();
+                ctx.arc(x + 3 * scale, markerY - bFs * 0.28, 2.5 * scale, 0, Math.PI * 2);
+                ctx.stroke();
+              } else if (secBulletStyle === "square") {
+                ctx.fillRect(x + 0.5 * scale, markerY - bFs * 0.48, 4.6 * scale, 4.6 * scale);
+              } else {
+                // diamond / arrow / check
+                const cxDia = x + 3 * scale;
+                const cyDia = markerY - bFs * 0.28;
+                const rDia = 3 * scale;
+                ctx.beginPath();
+                ctx.moveTo(cxDia, cyDia - rDia);
+                ctx.lineTo(cxDia + rDia, cyDia);
+                ctx.lineTo(cxDia, cyDia + rDia);
+                ctx.lineTo(cxDia - rDia, cyDia);
+                ctx.closePath();
+                ctx.fill();
+              }
+            }
+          }
+          ey = drawWrappedRuns(
+            parseInlineRuns(bullet, { color: isATS || isLatex ? "222222" : "2B3A36" }),
+            marked ? x + indent : x,
+            marked ? colW - indent : colW,
+            bFs,
+            bLh,
+            ey
+          );
+          ey += bulletGap;
+        });
+      }
+
+      if (b.skills.length > 0 && !(isLatex && b.type === "skill_group")) {
+        ey += entryGap * 0.6;
+        if (isLatex) {
+          const techRuns: InlineRun[] = [
+            { text: "Tech: ", bold: true, color: "111111" },
+            { text: b.skills.join(", "), color: "333333" },
+          ];
+          ey = drawWrappedRuns(techRuns, x, colW, baseFs * 0.86, baseFs * 0.86 * lh, ey);
+        } else if (isATS) {
+          ey = drawWrappedRuns(
+            parseInlineRuns(b.skills.join("  ·  "), { color: "333333" }),
+            x,
+            colW,
+            baseFs * 0.88,
+            baseFs * 0.88 * lh,
+            ey
+          );
+        } else {
+          ey = drawSkillChips(b.skills, x, colW, ey, isCampus);
+        }
+      }
+
+      return ey + entryGap;
+    };
+
+    const drawSectionBlock = (
+      s: Section,
+      x: number,
+      colW: number,
+      startY: number,
+      entryHeaderMode: "row" | "stack" = headerLayout
+    ): number => {
+      const blocks = [...s.blocks]
+        .filter((b) => b.visible && blockHasContent(b))
+        .sort((a, b) => a.order - b.order);
+      if (blocks.length === 0) return startY;
+
+      let sy = startY;
+      const defaultBullet: BulletStyleKey =
+        prep.theme.bullet_style ??
+        (isATS || isLatex || isCampus || isSwiss ? "disc" : "diamond");
+      const secBulletStyle = resolveBulletStyle(s.bullet_style, defaultBullet);
+
+      const isCampusEduBox = isCampus && s.type === "education";
+      const boxPadX = isCampusEduBox ? 10 * scale : 0;
+      const boxPadY = isCampusEduBox ? 8 * scale : 0;
+      const innerX = x + boxPadX;
+      const innerW = colW - boxPadX * 2;
+      if (isCampusEduBox) sy += boxPadY;
+
+      // Section Heading
+      const hFs = baseFs * (isLatex ? 1.04 : isCampus ? 1.05 : 1.12);
+      setFont(hFs, true, false);
+      const titleText = isLatex || isATS ? s.title.toUpperCase() : s.title;
+      const titleBase = sy + hFs * 0.88;
+
+      if (isLatex || isATS) {
+        if (!dryRun) {
+          ctx.fillStyle = "#111111";
+          ctx.fillText(titleText, innerX, titleBase);
+          const ruleY = sy + hFs * 1.12;
+          ctx.fillRect(innerX, ruleY, innerW, (isATS ? 2.2 : 1) * scale);
+        }
+        sy += hFs * 1.18 + headGap;
+      } else if (isCampus) {
+        if (!dryRun) {
+          ctx.fillStyle = primaryCss;
+          ctx.fillRect(innerX, sy + 2 * scale, 3 * scale, hFs * 0.95);
+          ctx.fillText(titleText, innerX + 9 * scale, titleBase);
+          const tw = ctx.measureText(titleText).width;
+          const ruleX = innerX + 9 * scale + tw + 8 * scale;
+          if (ruleX < innerX + innerW) {
+            ctx.fillStyle = `#${primaryHex}18`;
+            ctx.fillRect(ruleX, sy + hFs * 0.52, innerX + innerW - ruleX, Math.max(1, 1 * scale));
+          }
+        }
+        sy += hFs * 1.15 + headGap;
+      } else {
+        // modern_single_column / academic_photo / executive_sidebar (带图标徽章 + 右侧淡分隔线)
+        const badgeS = hFs * 1.14;
+        if (!dryRun) {
+          drawRoundedRect(
+            ctx,
+            innerX,
+            sy + (hFs - badgeS) * 0.35,
+            badgeS,
+            badgeS,
+            isAcademic ? badgeS / 2 : badgeS * 0.26
+          );
+          ctx.fillStyle = primaryCss;
+          ctx.fill();
+          // 徽章中心白色内点
+          ctx.fillStyle = "#FFFFFF";
+          ctx.beginPath();
+          ctx.arc(
+            innerX + badgeS / 2,
+            sy + (hFs - badgeS) * 0.35 + badgeS / 2,
+            badgeS * 0.18,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+
+          ctx.fillStyle = primaryCss;
+          ctx.fillText(titleText, innerX + badgeS + 7 * scale, titleBase);
+          const tw = ctx.measureText(titleText).width;
+          const ruleX = innerX + badgeS + 7 * scale + tw + 8 * scale;
+          if (ruleX < innerX + innerW) {
+            ctx.fillStyle = `#${primaryHex}18`;
+            ctx.fillRect(ruleX, sy + hFs * 0.52, innerX + innerW - ruleX, Math.max(1, 1 * scale));
+          }
+        }
+        sy += hFs * 1.15 + headGap;
+      }
+
+      for (const b of blocks) {
+        sy = drawEntryBlock(b, innerX, innerW, sy, secBulletStyle, entryHeaderMode);
+      }
+
+      if (isCampusEduBox) {
+        sy += boxPadY;
+        if (!dryRun) {
+          drawRoundedRect(ctx, x, startY, colW, sy - startY, 6 * scale);
+          ctx.strokeStyle = `#${primaryHex}24`;
+          ctx.lineWidth = Math.max(1, 1 * scale);
+          ctx.stroke();
+        }
+      }
+
+      return sy + secGap;
+    };
+
+    const rawBodySections = [...prep.data.sections]
+      .filter(
+        (s) =>
+          s.visible &&
+          s.type !== "basic_info" &&
+          s.blocks.some((b) => b.visible && blockHasContent(b))
+      )
+      .sort((a, b) => a.order - b.order);
+
+    const rankCampus = (s: Section) =>
+      s.type === "summary" ? 0 : s.type === "education" ? 1 : 2;
+    const bodySections = isCampus
+      ? [...rawBodySections].sort((a, b) => rankCampus(a) - rankCampus(b) || a.order - b.order)
+      : rawBodySections;
+
+    if (isSwiss) {
+      const leftColW = 116 * scale;
+      const colGap = 20 * scale;
+      const rightX = padX + leftColW + colGap;
+      const rightW = contentW - leftColW - colGap;
+      const defaultBullet: BulletStyleKey = prep.theme.bullet_style ?? "disc";
+
+      bodySections.forEach((s, sIdx) => {
+        const blocks = [...s.blocks]
+          .filter((b) => b.visible && blockHasContent(b))
+          .sort((a, b) => a.order - b.order);
+        if (blocks.length === 0) return;
+        const secStartY = y;
+        if (!dryRun) {
+          setFont(baseFs * 0.92, true, false);
+          ctx.fillStyle = primaryCss;
+          ctx.fillText(s.title.toUpperCase(), padX, secStartY + baseFs * 0.95);
+        }
+        const bs = resolveBulletStyle(s.bullet_style, defaultBullet);
+        let rightY = secStartY;
+        for (const b of blocks) {
+          rightY = drawEntryBlock(b, rightX, rightW, rightY, bs, headerLayout);
+        }
+        y = Math.max(secStartY + baseFs * 1.4, rightY);
+        if (sIdx < bodySections.length - 1) {
+          y += headGap * 0.5;
+          if (!dryRun) {
+            ctx.fillStyle = "#E2E8F0";
+            ctx.fillRect(padX, y, contentW, Math.max(1, 0.8 * scale));
+          }
+          y += secGap;
+        }
+      });
+    } else if (isSidebar) {
+      const sideTypes = ["skills", "education", "certifications"];
+      const sideSections = bodySections.filter((s) => sideTypes.includes(s.type));
+      const mainSections = bodySections.filter((s) => !sideTypes.includes(s.type));
+      const sideW = 216 * scale;
+      const colGap = 24 * scale;
+      const sidePad = 14 * scale;
+      const mainX = padX + sideW + colGap;
+      const mainW = contentW - sideW - colGap;
+      const startColsY = y;
+
+      // 先测算侧栏高度以便绘制淡底色卡片
+      let sideEndY = startColsY + sidePad;
+      for (const s of sideSections) {
+        sideEndY = drawSectionBlock(s, padX + sidePad, sideW - sidePad * 2, sideEndY, "stack");
+      }
+      const sideBoxH = Math.max(40 * scale, sideEndY - startColsY + sidePad * 0.5);
+      if (!dryRun && sideSections.length > 0) {
+        drawRoundedRect(ctx, padX, startColsY, sideW, sideBoxH, 12 * scale);
+        ctx.fillStyle = "#F8FAFC";
+        ctx.fill();
+        ctx.strokeStyle = "#E2E8F0";
+        ctx.lineWidth = Math.max(1, 0.9 * scale);
+        ctx.stroke();
+        let drawSideY = startColsY + sidePad;
+        for (const s of sideSections) {
+          drawSideY = drawSectionBlock(s, padX + sidePad, sideW - sidePad * 2, drawSideY, "stack");
+        }
+      }
+
+      let mainEndY = startColsY;
+      for (const s of mainSections) {
+        mainEndY = drawSectionBlock(s, mainX, mainW, mainEndY, headerLayout);
+      }
+      y = Math.max(startColsY + sideBoxH, mainEndY);
+    } else {
+      for (const s of bodySections) {
+        y = drawSectionBlock(s, padX, contentW, y, headerLayout);
+      }
     }
-    y += 8 * scale;
+
+    return y;
   };
 
-  if (isTwoColumnTemplate(prep.template_id) && bodySections.length > 0) {
-    const { left, right } = splitTwoColumnSections(bodySections);
-    const startY = y;
-    const gap = 24 * scale;
-    const leftW = (W - margin * 2 - gap) * 0.35;
-    const rightW = W - margin * 2 - gap - leftW;
-    for (const s of left) drawSection(s, margin, leftW);
-    y = startY;
-    for (const s of right) drawSection(s, margin + leftW + gap, rightW);
-  } else {
-    for (const s of bodySections) {
-      drawSection(s, margin, W - margin * 2);
-    }
-  }
+  // Pass 1: 干跑测算真实高度；若单页内容微超画布底边距，自动按比例微缩以确保 100% 完整落入单页不截断
+  const baseScale = 2;
+  const measuredEndY = renderPass(baseScale, true);
+  const maxAllowedY = H - densitySpec.padY * baseScale * 0.85;
+  const fitScale =
+    measuredEndY > maxAllowedY
+      ? Math.max(1.38, baseScale * (maxAllowedY / measuredEndY))
+      : baseScale;
+  renderPass(fitScale, false);
 
   const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
   const b64 = dataUrl.split(",")[1];

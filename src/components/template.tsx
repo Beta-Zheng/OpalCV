@@ -170,7 +170,7 @@ function BulletList({
     );
   };
 
-  const cls = "mt-[var(--entry-gap)] flex list-none flex-col gap-[var(--bullet-gap)] pl-0";
+  const cls = "mt-[var(--bullet-gap)] flex list-none flex-col gap-[var(--bullet-gap)] pl-0";
   if (bulletStyle === "ordered") {
     return <ol className={cls}>{pairs.map((p) => renderItem(p))}</ol>;
   }
@@ -186,17 +186,17 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
 
   // LaTeX / 北美大厂极简版式：技能组紧凑单行（Category: Skill A, Skill B），条目采用地道两行层级
   if (variant === "latex") {
-    if (block.type === "skill_group" && block.skills.length > 0) {
+    if (block.type === "skill_group" && (block.skills.length > 0 || block.description)) {
       return (
-        <div data-resume-entry={block.block_id} className="mb-[calc(var(--bullet-gap)*1.1)] break-inside-avoid text-[0.91em] leading-[var(--lh)] text-[#1a1a1a]">
+        <div data-resume-entry={block.block_id} className="mb-[calc(var(--bullet-gap)*1.1)] last:mb-0 break-inside-avoid text-[0.91em] leading-[var(--lh)] text-[#1a1a1a]">
           {block.title && <strong className="font-bold text-[#111]">{renderRich(block.title)}: </strong>}
-          <span>{block.skills.join(", ")}</span>
+          <span>{block.description ? renderRich(block.description) : block.skills.join(", ")}</span>
         </div>
       );
     }
     const subText = subtitleParts(block).join(" · ");
     return (
-      <div data-resume-entry={block.block_id} className="mb-[var(--entry-gap)] break-inside-avoid">
+      <div data-resume-entry={block.block_id} className="mb-[var(--entry-gap)] last:mb-0 break-inside-avoid">
         {(block.title || dateRange(block)) && (
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-[1.01em] font-bold leading-snug text-[#111]">
@@ -236,7 +236,7 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
   }
 
   return (
-    <div data-resume-entry={block.block_id} className="mb-[var(--entry-gap)] break-inside-avoid">
+    <div data-resume-entry={block.block_id} className="mb-[var(--entry-gap)] last:mb-0 break-inside-avoid">
       {(block.title || subtitleParts(block).length > 0) &&
         (headerLayout === "stack" ? (
           <p className="text-[1em] font-bold text-ink-900">
@@ -271,16 +271,16 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
         </p>
       )}
       {block.description && (
-        <p className={cx("mt-[var(--entry-gap)] whitespace-pre-line text-[0.92em] leading-[var(--lh)]", isATS ? "text-[#222]" : "text-ink-700")}>{renderRich(block.description)}</p>
+        <p className={cx("mt-[var(--bullet-gap)] whitespace-pre-line text-[0.92em] leading-[var(--lh)]", isATS ? "text-[#222]" : "text-ink-700")}>{renderRich(block.description)}</p>
       )}
       {bullets.length > 0 && <BulletList bullets={bullets} marks={block.bullet_marks} bulletStyle={bulletStyle} color={color} isATS={isATS} />}
       {block.skills.length > 0 &&
         (skill === "text" ? (
-          <p className="mt-[var(--entry-gap)] text-[0.9em]" style={{ color: isATS ? "#333" : undefined }}>
+          <p className="mt-[var(--bullet-gap)] text-[0.9em]" style={{ color: isATS ? "#333" : undefined }}>
             {block.skills.join(style.variant === "latex" ? ", " : "  ·  ")}
           </p>
         ) : (
-          <div className="mt-[var(--entry-gap)] flex flex-wrap gap-1">
+          <div className="mt-[var(--bullet-gap)] flex flex-wrap gap-1">
             {block.skills.map((sk) => (
               <span
                 key={sk}
@@ -395,7 +395,7 @@ function SectionBlock({ section, style }: { section: Section; style: TStyle }) {
     <section
       data-resume-section={section.section_id}
       className={cx(
-        "mb-[var(--sec-gap)]",
+        "mb-[var(--sec-gap)] last:mb-0",
         isCampus && section.type === "education" && "rounded-md px-2.5 py-2"
       )}
       style={isCampus && section.type === "education" ? { background: `${color}08`, boxShadow: `inset 0 0 0 1px ${color}1f` } : undefined}
@@ -434,14 +434,14 @@ function AcademicSectionBlock({ section, color, headerLayout, bulletStyle }: { s
   // 模块级要点样式优先，未设置时继承全局默认
   const bs = resolveBulletStyle(section.bullet_style, bulletStyle);
   return (
-    <section data-resume-section={section.section_id} className="mb-[var(--sec-gap)]">
+    <section data-resume-section={section.section_id} className="mb-[var(--sec-gap)] last:mb-0">
       <h2 className="mb-[var(--head-gap)] flex items-center gap-[0.5em] text-[1.12em] font-bold" style={{ color, letterSpacing: "0.02em", breakAfter: "avoid" }}>
         <SectionBadge section={section} color={color} shape="circle" />
         {section.title}
         <SectionRule color={color} />
       </h2>
       {blocks.map((b) => (
-        <div key={b.block_id} data-resume-entry={b.block_id} className="mb-[var(--entry-gap)] break-inside-avoid">
+        <div key={b.block_id} data-resume-entry={b.block_id} className="mb-[var(--entry-gap)] last:mb-0 break-inside-avoid">
           {(b.title || subtitleParts(b).length > 0) &&
             (headerLayout === "stack" ? (
               <p className="text-[1em] font-bold text-ink-900">
@@ -467,11 +467,11 @@ function AcademicSectionBlock({ section, color, headerLayout, bulletStyle }: { s
             </p>
           )}
           {b.description && (
-            <p className="mt-[var(--entry-gap)] whitespace-pre-line text-[0.92em] leading-[var(--lh)] text-ink-700">{renderRich(b.description)}</p>
+            <p className="mt-[var(--bullet-gap)] whitespace-pre-line text-[0.92em] leading-[var(--lh)] text-ink-700">{renderRich(b.description)}</p>
           )}
           {b.bullets.filter(Boolean).length > 0 && <BulletList bullets={b.bullets.filter(Boolean)} marks={b.bullet_marks} bulletStyle={bs} color={color} />}
           {b.skills.length > 0 && (
-            <div className="mt-[var(--entry-gap)] flex flex-wrap gap-1">
+            <div className="mt-[var(--bullet-gap)] flex flex-wrap gap-1">
               {b.skills.map((sk) => (
                 <span
                   key={sk}
