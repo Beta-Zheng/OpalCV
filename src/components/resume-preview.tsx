@@ -142,33 +142,6 @@ export default function ResumePreview({
       className="relative min-w-0"
       data-testid="resume-preview"
     >
-      <div className="sticky top-2.5 z-10 flex justify-center px-3 py-1">
-        <div
-          data-preview-toolbar
-          className="liquid-glass relative flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full px-2.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <span className="shrink-0 rounded-full bg-surface/85 px-2 py-0.5 text-[11px] font-semibold text-ink-600 ring-1 ring-ink-900/6">
-            {t(`${pages.length} 页`, `${pages.length}p`)}
-          </span>
-          <div className="flex shrink-0 flex-nowrap items-center gap-0.5" data-preview-controls>
-            {tools}
-            {(["fit", 0.75, 1] as const).map((value) => (
-              <Btn
-                key={value}
-                variant="ghost"
-                size="sm"
-                aria-pressed={zoom === value}
-                className={`h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px] ${value !== "fit" ? "preview-zoom-fixed" : ""} ${
-                  zoom === value ? "glass-lens font-semibold" : ""
-                }`}
-                onClick={() => setZoom(value)}
-              >
-                {value === "fit" ? t("适应", "Fit") : `${value * 100}%`}
-              </Btn>
-            ))}
-          </div>
-        </div>
-      </div>
       {onLocate && <p role="status" className={notice.startsWith("该内容") ? "border-b border-line px-3 py-2 text-[12px] text-seal-700" : "sr-only"}>{notice}</p>}
       {onLocate && controls.map((control, index) => createPortal(
         <button key={index} type="button" data-preview-edit
@@ -203,9 +176,37 @@ export default function ResumePreview({
       >
         <A4Sheet resume={resume} />
       </div>
-      <div ref={displayed} className={`preview-canvas rounded-2xl overflow-x-auto px-5 py-6 ${onLocate ? "interactive-preview" : ""}`}
+      <div ref={displayed} className={`preview-canvas rounded-2xl overflow-x-auto px-5 pb-6 pt-3 ${onLocate ? "interactive-preview" : ""}`}
         onClick={event => locateFromPreview(event.target as Element)}
         >
+        <div className="sticky top-2.5 z-10 mb-3 flex justify-center">
+          <div
+            data-preview-toolbar
+            onClick={(e) => e.stopPropagation()}
+            className="liquid-glass relative flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full px-2.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            <span className="shrink-0 rounded-full bg-surface/85 px-2 py-0.5 text-[11px] font-semibold text-ink-600 ring-1 ring-ink-900/6">
+              {t(`${pages.length} 页`, `${pages.length}p`)}
+            </span>
+            <div className="flex shrink-0 flex-nowrap items-center gap-0.5" data-preview-controls>
+              {tools}
+              {(["fit", 0.75, 1] as const).map((value) => (
+                <Btn
+                  key={value}
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={zoom === value}
+                  className={`h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px] ${value !== "fit" ? "preview-zoom-fixed" : ""} ${
+                    zoom === value ? "glass-lens font-semibold" : ""
+                  }`}
+                  onClick={() => setZoom(value)}
+                >
+                  {value === "fit" ? t("适应", "Fit") : `${value * 100}%`}
+                </Btn>
+              ))}
+            </div>
+          </div>
+        </div>
         {pages.map((page, i) => (
           <div
             key={i}
