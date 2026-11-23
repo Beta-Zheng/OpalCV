@@ -6,7 +6,11 @@ import type {
   RouteStrategy,
 } from "../types";
 import { cx, nowISO, uid } from "../lib/utils";
-import { testProvider, type ProviderDiagnosticCode } from "../lib/ai";
+import {
+  normalizeProviderBaseUrl,
+  testProvider,
+  type ProviderDiagnosticCode,
+} from "../lib/ai";
 import {
   decryptText,
   encryptText,
@@ -42,6 +46,16 @@ const MODEL_PRESETS: Array<{
       protocol: "ollama",
       base_url: "http://localhost:11434",
       model_name: "qwen2.5:7b",
+    },
+  },
+  {
+    label: "LM Studio 本地",
+    patch: {
+      name: "LM Studio",
+      type: "local",
+      protocol: "openai_compatible",
+      base_url: "http://localhost:1234/v1",
+      model_name: "qwen/qwen3.5-9b",
     },
   },
   {
@@ -172,11 +186,7 @@ function ModelForm({
       toast("warn", "请填写模型名称与 Model 名称");
       return;
     }
-    const baseUrl =
-      m.base_url.trim() ||
-      (m.protocol === "ollama"
-        ? "http://localhost:11434"
-        : "https://api.openai.com/v1");
+    const baseUrl = normalizeProviderBaseUrl(m.base_url, m.protocol);
     try {
       const parsed = new URL(baseUrl);
       if (
@@ -308,7 +318,9 @@ function ModelForm({
                       k === "ollama"
                         ? "http://localhost:11434"
                         : m.base_url.includes("localhost:11434")
-                        ? "https://api.openai.com/v1"
+                        ? m.type === "local"
+                          ? "http://localhost:1234/v1"
+                          : "https://api.openai.com/v1"
                         : m.base_url,
                   })
                 }

@@ -5,6 +5,8 @@ import {
   chatOpenAI,
   generateWithLLM,
   defaultModels,
+  normalizeProviderBaseUrl,
+  parseAIOutput,
   ruleSuggestion,
   testProvider,
 } from "../ai";
@@ -319,5 +321,50 @@ describe("testProvider：连接诊断", () => {
     expect(res.ok).toBe(false);
     expect(res.code).toBe("timeout");
     expect(res.message).toContain("超时");
+  });
+
+  it("LM Studio /api/v1 地址自动归一化为 /v1，且在 HTTP 400 时自动降级去掉 response_format 重试 + 剥离 <think> 思考块", async () => {
+    expect(
+      normalizeProviderBaseUrl("http://localhost:1234/api/v1", "openai_compatible")
+    ).toBe("http://localhost:1234/v1");
+    expect(
+      normalizeProviderBaseUrl("http://localhost:1234", "openai_compatible")
+    ).toBe("http://localhost:1234/v1");
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('{"error":"response_format.type must be json_schema or text"}', {
+          status: 400,
+        })
+      )
+      .mockResolvedValueOnce(
+        response(
+          '<think>思考如何润色...</think>\n{"suggested_block":{"title":"LM Studio 成功"},"explanation":"已完成本地润色"}'
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const lmProvider = {
+      ...provider(),
+      type: "local" as const,
+      base_url: "http://localhost:1234/api/v1",
+      model_name: "qwen/qwen3.5-9b",
+    };
+    const out = await generateWithLLM(lmProvider, "polish", testBlock(), "", null);
+    expect(out.suggested_block.title).toBe("LM Studio 成功");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:1234/v1/chat/completions");
+    const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(firstBody.response_format).toEqual({ type: "json_object" });
+    expect(secondBody.response_format).toBeUndefined();
+
+    // 验证未闭合前置 </think> 也能正常解析
+    const parsed = parseAIOutput(
+      '思考过程...</think>{"suggested_block":{"title":"Ok"},"explanation":"done"}',
+      testBlock()
+    );
+    expect(parsed.suggested_block.title).toBe("Ok");
   });
 });

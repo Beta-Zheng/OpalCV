@@ -212,6 +212,39 @@ function parseOpenAIStreamLine(line: string): string {
   }
 }
 
+export function normalizeProviderBaseUrl(
+  rawUrl: string | undefined,
+  protocol: "ollama" | "openai_compatible"
+): string {
+  const fallback =
+    protocol === "ollama"
+      ? "http://localhost:11434"
+      : "https://api.openai.com/v1";
+  let base = (rawUrl || fallback).trim().replace(/\/+$/, "");
+  if (protocol === "ollama") {
+    base = base.replace(/\/api(?:\/(?:chat|tags|generate))?$/i, "");
+    return base || fallback;
+  }
+  // Common user copy-paste suffixes: full endpoint paths
+  base = base
+    .replace(/\/chat\/completions$/i, "")
+    .replace(/\/completions$/i, "")
+    .replace(/\/models$/i, "");
+  // LM Studio native REST root (/api/v1 or /api/v0) -> OpenAI compatible /v1
+  if (
+    /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?\/api\/v[01]$/i.test(
+      base
+    )
+  ) {
+    base = base.replace(/\/api\/v[01]$/i, "/v1");
+  }
+  // Bare localhost:port for OpenAI-compatible local servers (LM Studio :1234, vLLM :8000, llama.cpp :8080) -> append /v1
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(base)) {
+    base = `${base}/v1`;
+  }
+  return base || fallback;
+}
+
 export async function chatOllama(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
@@ -219,7 +252,7 @@ export async function chatOllama(
 ): Promise<string> {
   const options = normalizeChatOptions(signalOrOptions);
   const stream = shouldStream(options);
-  const base = (p.base_url || "http://localhost:11434").replace(/\/$/, "");
+  const base = normalizeProviderBaseUrl(p.base_url, "ollama");
   const init: RequestInit = {
     method: "POST",
     signal: options.signal,
@@ -255,50 +288,66 @@ export async function chatOpenAI(
 ): Promise<string> {
   const options = normalizeChatOptions(signalOrOptions);
   const stream = shouldStream(options);
-  const base = (p.base_url || "https://api.openai.com/v1").replace(/\/$/, "");
-  const body: Record<string, unknown> = {
-    model: p.model_name,
-    messages,
-    temperature: p.temperature,
-    max_tokens: p.max_tokens,
-    response_format: { type: "json_object" },
-  };
-  if (stream) {
-    body.stream = true;
-  }
+  const base = normalizeProviderBaseUrl(p.base_url, "openai_compatible");
   const apiKey = isEncryptedPayload(p.api_key)
     ? await resolveApiKey(p.api_key)
     : p.api_key || "";
   if (options.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
-  const init: RequestInit = {
-    method: "POST",
-    signal: options.signal,
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify(body),
+
+  const makeInit = (includeResponseFormat: boolean): RequestInit => {
+    const body: Record<string, unknown> = {
+      model: p.model_name,
+      messages,
+      temperature: p.temperature,
+      max_tokens: p.max_tokens,
+      ...(includeResponseFormat
+        ? { response_format: { type: "json_object" } }
+        : {}),
+      ...(stream ? { stream: true } : {}),
+    };
+    return {
+      method: "POST",
+      signal: options.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify(body),
+    };
   };
 
-  if (stream) {
-    return readStreamWithTimeout(
+  const runRequest = async (includeResponseFormat: boolean): Promise<string> => {
+    const init = makeInit(includeResponseFormat);
+    if (stream) {
+      return readStreamWithTimeout(
+        `${base}/chat/completions`,
+        init,
+        p.timeout_ms,
+        parseOpenAIStreamLine,
+        (res) => res?.choices?.[0]?.message?.content ?? "",
+        options
+      );
+    }
+    const res = await fetchWithTimeout(
       `${base}/chat/completions`,
       init,
-      p.timeout_ms,
-      parseOpenAIStreamLine,
-      (res) => res?.choices?.[0]?.message?.content ?? "",
-      options
+      p.timeout_ms
     );
-  }
+    return res?.choices?.[0]?.message?.content ?? "";
+  };
 
-  const res = await fetchWithTimeout(
-    `${base}/chat/completions`,
-    init,
-    p.timeout_ms
-  );
-  return res?.choices?.[0]?.message?.content ?? "";
+  try {
+    return await runRequest(true);
+  } catch (e) {
+    // LM Studio / local GGUF servers often return HTTP 400 when response_format is {"type":"json_object"}
+    // (LM Studio requires "json_schema" or "text"). Retry seamlessly without response_format.
+    if (e instanceof ProviderError && (e.status === 400 || e.status === 422)) {
+      return await runRequest(false);
+    }
+    throw e;
+  }
 }
 
 export function chat(
@@ -318,6 +367,8 @@ export function parseAIOutput(
   original: Block
 ): AISuggestionOutput {
   const cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/^[\s\S]*?<\/think>/i, "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
@@ -682,12 +733,7 @@ export async function testProvider(
   p: ModelProvider
 ): Promise<ProviderTestResult> {
   const t0 = performance.now();
-  const base = (
-    p.base_url ||
-    (p.protocol === "ollama"
-      ? "http://localhost:11434"
-      : "https://api.openai.com/v1")
-  ).replace(/\/$/, "");
+  const base = normalizeProviderBaseUrl(p.base_url, p.protocol);
 
   try {
     if (p.protocol === "ollama") {
