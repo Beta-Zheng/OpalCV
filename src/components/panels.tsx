@@ -971,7 +971,7 @@ export function AIPanel({
               <div className="flex items-center gap-2 border-b border-ink-100 px-3.5 py-2.5">
                 <span
                   className={cx(
-                    "chip",
+                    "chip shrink-0 whitespace-nowrap",
                     STATUS_CHIP[active.resolution ?? active.status].cls
                   )}
                 >
@@ -980,7 +980,7 @@ export function AIPanel({
                     STATUS_CHIP[active.resolution ?? active.status].en
                   )}
                 </span>
-                <span className="text-[12.5px] font-bold text-ink-800">
+                <span className="shrink-0 whitespace-nowrap text-[12.5px] font-bold text-ink-800">
                   {actionLabel(active.action, ACTION_LABELS[active.action].label, uiLang)}
                 </span>
                 <span className="truncate text-[11.5px] text-ink-400">
