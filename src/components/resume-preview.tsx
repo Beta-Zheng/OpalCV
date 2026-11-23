@@ -214,18 +214,13 @@ export default function ResumePreview({
             style={{ width: 794 * scale, minHeight: page.height * scale }}
           >
             <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <p className="inline-flex items-center gap-1.5 rounded-full bg-surface/92 px-2.5 py-0.5 text-[10.5px] font-semibold text-ink-600 shadow-xs ring-1 ring-ink-900/10">
-                  {t(`A4 · 第 ${i + 1} / ${pages.length} 页`, `A4 · Page ${i + 1} of ${pages.length}`)}
-                  {page.oversized &&
-                    t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
-                </p>
-                <span className="truncate rounded-full bg-brand-500/10 px-2.5 py-0.5 text-[10.5px] font-semibold text-brand-700 ring-1 ring-brand-500/20">
-                  {tplLabel}
-                </span>
-              </div>
-              <span className="shrink-0 font-mono text-[10px] font-medium text-ink-400">
-                210 × 297 mm
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-surface/85 px-2.5 py-0.5 text-[10.5px] font-medium text-ink-500 ring-1 ring-ink-900/6">
+                {t(`A4 · 第 ${i + 1} / ${pages.length} 页`, `A4 · Page ${i + 1} of ${pages.length}`)}
+                {page.oversized &&
+                  t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
+              </p>
+              <span className="truncate text-[10.5px] font-medium text-ink-400">
+                {tplLabel} · <span className="font-mono text-[10px]">210 × 297 mm</span>
               </span>
             </div>
             <div className="a4-paper-frame overflow-hidden" style={{ height: page.height * scale, position: "relative" }}>

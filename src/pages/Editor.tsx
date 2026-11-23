@@ -781,13 +781,8 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
           className="hidden sm:block"
           items={[
             { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
-            { label: t("篇幅调整", "Fit Pages"), onSelect: () => setOnePageOpen(true) },
             { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
             { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
-            {
-              label: showSteps ? t("隐藏流程进度", "Hide Workflow Bar") : t("显示流程进度", "Show Workflow Bar"),
-              onSelect: () => setShowSteps((v) => !v),
-            },
           ]}
         />
 
@@ -1102,19 +1097,17 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 <ResumePreview resume={resume} onLayout={setLivePages}
                   tools={
                     <>
-                      {editorMode === "layout" && (
+                      {editorMode === "layout" && previewLocation && (
                         <Btn
                           size="sm"
                           variant="ghost"
                           className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]"
-                          disabled={!previewLocation}
                           onClick={() => {
-                            if (previewLocation)
-                              setPreviewLocation({
-                                ...previewLocation,
-                                scroll: true,
-                                requestId: ++navigationId.current,
-                              });
+                            setPreviewLocation({
+                              ...previewLocation,
+                              scroll: true,
+                              requestId: ++navigationId.current,
+                            });
                           }}
                         >
                           {t("定位", "Locate")}
@@ -1136,7 +1129,6 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                           {t("换边", "Swap")}
                         </Btn>
                       )}
-                      <Btn size="sm" variant="ghost" className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]" onClick={() => { setSettingsTab('template'); setSettingsOpen(true); }}>{t("模板", "Templates")}</Btn>
                       <Btn size="sm" variant="ghost" className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]" onClick={() => setOnePageOpen(true)}>{t("调页", "Fit Pages")}</Btn>
                     </>
                   }
