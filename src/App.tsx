@@ -412,8 +412,10 @@ function AppShell() {
           animate={{ opacity: 1, y: 0 }}
           transition={enterTransition}
           className={cx(
-            "app-view h-full overflow-y-auto pt-14 pb-24 md:pb-0",
-            view.name === "editor" && "overflow-hidden pt-0 pb-0"
+            "app-view h-full",
+            view.name === "editor"
+              ? "overflow-hidden"
+              : "overflow-y-auto pt-14 pb-24 md:pb-0"
           )}
         >
           {view.name === "home" && <Home />}
