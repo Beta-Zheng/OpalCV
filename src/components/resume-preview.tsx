@@ -196,22 +196,27 @@ export default function ResumePreview({
       >
         <A4Sheet resume={resume} />
       </div>
-      <div ref={displayed} className={`preview-canvas overflow-x-auto px-4 py-5 ${onLocate ? "interactive-preview" : ""}`}
+      <div ref={displayed} className={`preview-canvas rounded-2xl overflow-x-auto px-5 py-6 ${onLocate ? "interactive-preview" : ""}`}
         onClick={event => locateFromPreview(event.target as Element)}
         >
         {pages.map((page, i) => (
           <div
             key={i}
             data-preview-page={i + 1}
-            className="mx-auto mb-6"
+            className="mx-auto mb-7 last:mb-2"
             style={{ width: 794 * scale, minHeight: page.height * scale }}
           >
-            <p className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-surface/85 px-2.5 py-0.5 text-[10.5px] font-medium text-ink-500 ring-1 ring-line">
-              {t(`第 ${i + 1} 页`, `Page ${i + 1}`)}
-              {page.oversized &&
-                t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
-            </p>
-            <div className="rounded-[2px] shadow-xl shadow-ink-950/12 ring-1 ring-ink-900/8" style={{ height: page.height * scale, position: "relative" }}>
+            <div className="mb-2 flex items-center justify-between px-0.5">
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-surface/92 px-2.5 py-0.5 text-[10.5px] font-semibold text-ink-600 shadow-xs ring-1 ring-ink-900/10">
+                {t(`A4 · 第 ${i + 1} / ${pages.length} 页`, `A4 · Page ${i + 1} of ${pages.length}`)}
+                {page.oversized &&
+                  t(" · 单个条目过长，请拆分后导出", " · Entry exceeds page height, split before export")}
+              </p>
+              <span className="font-mono text-[10px] font-medium text-ink-400">
+                210 × 297 mm
+              </span>
+            </div>
+            <div className="a4-paper-frame overflow-hidden" style={{ height: page.height * scale, position: "relative" }}>
               <div
                 style={{
                   transform: `scale(${scale})`,

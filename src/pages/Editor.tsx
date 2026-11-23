@@ -26,12 +26,13 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { AIAction, Block, Resume, Section } from "../types";
-import { AUDIENCE_LABELS, TEMPLATES } from "../types";
+import type { AIAction, Block, BulletStyleKey, Resume, Section } from "../types";
+import { AUDIENCE_LABELS, BULLET_STYLE_OPTIONS, TEMPLATES } from "../types";
 import { cx } from "../lib/utils";
 import { useAppSlice, useResume } from "../lib/store";
 import { audienceLabel, templateNameLabel, useT, useUiLang } from "../lib/i18n";
 import { SectionCard } from "../components/blocks";
+import { BulletGlyph } from "../components/template";
 import { AIPanel, JDPanel, OutlinePanel } from "../components/panels";
 import ResumePreview from "../components/resume-preview";
 import ResumeThumbnail from "../components/resume-thumbnail";
@@ -103,7 +104,25 @@ function navigateTabs(event: React.KeyboardEvent<HTMLDivElement>) {
   tabs[next].focus();
 }
 
-const THEME_COLORS = ["#4F46E5", "#1d4ed8", "#9f1239", "#b45309", "#334155"];
+const THEME_PALETTES: Array<{ hex: string; zh: string; en: string }> = [
+  { hex: "#4F46E5", zh: "深海靛", en: "Indigo" },
+  { hex: "#1E3A8A", zh: "剑桥蓝", en: "Navy" },
+  { hex: "#0F766E", zh: "松石青", en: "Teal" },
+  { hex: "#15803D", zh: "祖母绿", en: "Emerald" },
+  { hex: "#881337", zh: "勃艮第", en: "Burgundy" },
+  { hex: "#7C2D12", zh: "胡桃棕", en: "Walnut" },
+  { hex: "#1E293B", zh: "曜石黑", en: "Obsidian" },
+];
+
+const BULLET_LABEL_EN: Record<BulletStyleKey, string> = {
+  diamond: "Diamond",
+  disc: "Disc",
+  square: "Square",
+  circle: "Circle",
+  arrow: "Arrow",
+  check: "Check",
+  ordered: "Numbered",
+};
 
 function EditorActionMenu({
   label,
@@ -268,6 +287,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
     "setTemplate",
     "setTheme",
     "addSection",
+    "setSectionBulletStyle",
     "setResumeOptions",
     "captureSnapshot"
   );
@@ -1364,32 +1384,51 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                     </div>
                   )}
                   {settingsTab === "style" && (
-                    <div className="soft-panel flex flex-col gap-2 rounded-2xl p-4">
+                    <div className="soft-panel flex flex-col gap-3 rounded-2xl p-4">
                       {resume.template_id !== "classic_ats" && (
                         <MenuSection title={t("主题色", "Accent Color")}>
-                          <div className="flex flex-wrap items-center gap-2 px-1">
-                            {THEME_COLORS.map((c) => (
-                              <button
-                                key={c}
-                                onClick={() =>
-                                  app.setTheme(resumeId, { primary_color: c })
-                                }
-                                className={cx(
-                                  "relative flex h-6 w-6 items-center justify-center rounded-full transition hover:scale-110",
-                                  resume.theme.primary_color === c
-                                    ? "ring-2 ring-offset-1 ring-ink-900"
-                                    : "ring-1 ring-ink-200 hover:ring-ink-400"
-                                )}
-                                style={{ background: c }}
-                                aria-label={`${t("主题色", "Accent")} ${c}`}
-                              >
-                                {resume.theme.primary_color === c && (
-                                  <IconCheck size={12} className="text-white" />
-                                )}
-                              </button>
-                            ))}
+                          <div className="grid grid-cols-4 gap-2">
+                            {THEME_PALETTES.map((p) => {
+                              const active =
+                                resume.theme.primary_color.toLowerCase() ===
+                                p.hex.toLowerCase();
+                              return (
+                                <button
+                                  key={p.hex}
+                                  type="button"
+                                  onClick={() =>
+                                    app.setTheme(resumeId, {
+                                      primary_color: p.hex,
+                                    })
+                                  }
+                                  className={cx(
+                                    "group flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[12px] transition-all",
+                                    active
+                                      ? "glass-lens font-semibold text-ink-900 ring-1 ring-brand-500/35"
+                                      : "bg-surface/75 text-ink-600 hover:bg-surface hover:text-ink-900"
+                                  )}
+                                  aria-label={`${t("主题色", "Accent")} ${t(p.zh, p.en)} (${p.hex})`}
+                                  aria-pressed={active}
+                                >
+                                  <span
+                                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full shadow-xs ring-1 ring-black/10"
+                                    style={{ background: p.hex }}
+                                  >
+                                    {active && (
+                                      <IconCheck
+                                        size={10}
+                                        className="text-white"
+                                      />
+                                    )}
+                                  </span>
+                                  <span className="truncate">
+                                    {t(p.zh, p.en)}
+                                  </span>
+                                </button>
+                              );
+                            })}
                             <label
-                              className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-full ring-1 ring-ink-200 transition hover:ring-ink-400"
+                              className="group relative flex cursor-pointer items-center gap-2 rounded-xl bg-surface/75 px-2.5 py-2 text-[12px] text-ink-600 transition-all hover:bg-surface hover:text-ink-900"
                               title={t("自定义主题色", "Custom color")}
                             >
                               <input
@@ -1403,7 +1442,10 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                                 className="absolute inset-0 cursor-pointer opacity-0"
                                 aria-label={t("自定义主题色", "Custom accent color")}
                               />
-                              <div className="h-3.5 w-3.5 rounded-full bg-gradient-to-br from-red-400 via-green-400 to-blue-400" />
+                              <span className="h-4 w-4 shrink-0 rounded-full bg-gradient-to-br from-rose-500 via-emerald-500 to-indigo-600 shadow-xs ring-1 ring-black/10" />
+                              <span className="truncate font-mono text-[11px]">
+                                {t("自定义", "Custom")}
+                              </span>
                             </label>
                           </div>
                           {contrastOnWhite(resume.theme.primary_color) < 4.5 && (
@@ -1417,11 +1459,11 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                               <button
                                 type="button"
                                 onClick={() =>
-                                  app.setTheme(resumeId, { primary_color: "#4338CA" })
+                                  app.setTheme(resumeId, { primary_color: "#4F46E5" })
                                 }
                                 className="shrink-0 font-semibold underline underline-offset-2"
                               >
-                                {t("改用深靛蓝", "Use Indigo")}
+                                {t("改用深海靛", "Use Indigo")}
                               </button>
                             </p>
                           )}
@@ -1480,8 +1522,8 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                     </div>
                   )}
                   {settingsTab === "layout" && (
-                    <div className="soft-panel flex flex-col gap-2 rounded-2xl p-4">
-                      <MenuSection title={t("纸张密度", "Page Density")}>
+                    <div className="soft-panel flex flex-col gap-3 rounded-2xl p-4">
+                      <MenuSection title={t("纸张密度与篇幅", "Page Density & Smart Fit")}>
                         <div className="liquid-glass relative flex gap-1 rounded-full p-1">
                           {(
                             [
@@ -1505,12 +1547,45 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                             </button>
                           ))}
                         </div>
-                        <p className="mt-2 text-[12px] text-ink-500">
-                          {t("调整预览与导出中的间距和行高。", "Adjust spacing and line height for preview & export.")}
-                        </p>
-                        <Btn size="sm" className="mt-2" onClick={() => { setSettingsOpen(false); setOnePageOpen(true); }}>
-                          {t("智能调整为 1 / 2 页", "Smart Fit 1 / 2 Pages")}
-                        </Btn>
+                        <div className="mt-2.5 flex items-center justify-between gap-3 rounded-2xl bg-surface/85 px-3.5 py-2.5 ring-1 ring-ink-900/6">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[12.5px] font-semibold text-ink-900">
+                                {t("智能一页 / 两页调优", "Smart 1 / 2-Page Fit")}
+                              </span>
+                              <span
+                                className={cx(
+                                  "rounded-full px-2 py-0.5 text-[10.5px] font-semibold",
+                                  (livePages.length || 1) === 1
+                                    ? "bg-emerald-500/12 text-emerald-700"
+                                    : "bg-brand-500/12 text-brand-700"
+                                )}
+                              >
+                                {t(
+                                  `当前 ${livePages.length || 1} 页`,
+                                  `Current: ${livePages.length || 1}p`
+                                )}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-[11.5px] text-ink-500">
+                              {t(
+                                "自动测算最优字号、行距与条目取舍，精准锁死 1 页或 2 页。",
+                                "Auto-tune font size, spacing & entry selection to fit 1 or 2 pages."
+                              )}
+                            </p>
+                          </div>
+                          <Btn
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0"
+                            onClick={() => {
+                              setSettingsOpen(false);
+                              setOnePageOpen(true);
+                            }}
+                          >
+                            {t("智能调整为 1 / 2 页", "Smart Fit 1 / 2 Pages")}
+                          </Btn>
+                        </div>
                       </MenuSection>
                       {resume.template_id !== "classic_ats" && (
                         <MenuSection title={t("条目标题排布", "Entry Header Layout")}>
@@ -1572,11 +1647,43 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                         </MenuSection>
                       )}
 
-                      <MenuSection title={t("要点列表", "Bullet Style")}>
-                        <p className="rounded-xl bg-surface/70 px-3 py-2 text-[12px] leading-snug text-ink-500">
+                      <MenuSection title={t("要点列表样式", "Bullet Marker Style")}>
+                        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+                          {BULLET_STYLE_OPTIONS.map((o) => {
+                            const curStyle = resume.theme.bullet_style ?? "diamond";
+                            const active = curStyle === o.key;
+                            return (
+                              <button
+                                key={o.key}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() => {
+                                  app.setTheme(resumeId, { bullet_style: o.key });
+                                  for (const s of resume.data.sections) {
+                                    if (s.bullet_style) {
+                                      app.setSectionBulletStyle(resumeId, s.section_id, null);
+                                    }
+                                  }
+                                }}
+                                className={cx(
+                                  "flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-[11.5px] transition-all",
+                                  active
+                                    ? "glass-lens font-semibold text-brand-700 ring-1 ring-brand-500/35"
+                                    : "bg-surface/75 text-ink-600 hover:bg-surface hover:text-ink-900"
+                                )}
+                              >
+                                <span className="flex h-4 w-4 items-center justify-center text-brand-600">
+                                  <BulletGlyph style={o.key} index={0} size="menu" />
+                                </span>
+                                <span>{t(o.label, BULLET_LABEL_EN[o.key])}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-1.5 text-[11.5px] leading-snug text-ink-400">
                           {t(
-                            "按模块设置：在中间栏各模块的「要点」编辑区右上角切换符号样式，每条要点可点行首符号单独开关。",
-                            "Per-section: switch bullet style in the top-right of each section's bullet list."
+                            "点击即可统一全篇列表符号；也可在各模块「要点」右上角单独覆盖，或点击行首符号开关单条符号。",
+                            "Click to apply across all sections, or override per section in the editor."
                           )}
                         </p>
                       </MenuSection>

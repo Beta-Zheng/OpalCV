@@ -123,6 +123,91 @@ interface TStyle {
   headerLayout: HeaderLayoutKey;
 }
 
+/** 统一矢量列表符号：编辑器行首、下拉选择器与 A4 简历预览共用同一套高精几何比例 */
+export function BulletGlyph({
+  style,
+  index = 0,
+  color = "currentColor",
+  size = "resume",
+}: {
+  style: BulletStyleKey;
+  index?: number;
+  color?: string;
+  size?: "resume" | "editor" | "menu";
+}) {
+  if (style === "ordered") {
+    return (
+      <span
+        className={cx(
+          "inline-block font-mono font-bold tabular-nums",
+          size === "menu"
+            ? "min-w-[1.4em] text-center text-[11.5px]"
+            : size === "editor"
+              ? "min-w-[1.3em] text-center text-[12px]"
+              : "min-w-[1.35em] text-right text-[0.86em]"
+        )}
+        style={{ color }}
+      >
+        {index + 1}.
+      </span>
+    );
+  }
+  const boxPx = size === "menu" ? 13 : size === "editor" ? 13 : 10;
+  if (style === "disc") {
+    return (
+      <svg width={boxPx} height={boxPx} viewBox="0 0 12 12" fill="none" className="block shrink-0" style={{ color }}>
+        <circle cx="6" cy="6" r="3.1" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (style === "square") {
+    return (
+      <svg width={boxPx} height={boxPx} viewBox="0 0 12 12" fill="none" className="block shrink-0" style={{ color }}>
+        <rect x="2.9" y="2.9" width="6.2" height="6.2" rx="1.4" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (style === "circle") {
+    return (
+      <svg width={boxPx} height={boxPx} viewBox="0 0 12 12" fill="none" className="block shrink-0" style={{ color }}>
+        <circle cx="6" cy="6" r="3.1" stroke="currentColor" strokeWidth="1.65" />
+      </svg>
+    );
+  }
+  if (style === "arrow") {
+    return (
+      <svg width={boxPx} height={boxPx} viewBox="0 0 12 12" fill="none" className="block shrink-0" style={{ color }}>
+        <path
+          d="M2.2 6h7.2M6.4 3l3.1 3-3.1 3"
+          stroke="currentColor"
+          strokeWidth="1.65"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (style === "check") {
+    return (
+      <svg width={boxPx} height={boxPx} viewBox="0 0 12 12" fill="none" className="block shrink-0" style={{ color }}>
+        <path
+          d="M2.3 6.3l2.4 2.4 5-5.2"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  // diamond (默认精致四芒几何菱形)
+  return (
+    <svg width={boxPx} height={boxPx} viewBox="0 0 12 12" fill="none" className="block shrink-0" style={{ color }}>
+      <path d="M6 1.8L10.2 6 6 10.2 1.8 6 6 1.8Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** 根据 bullet_style 渲染一条要点；marks[i]=false 的条目不渲染符号（无占位），
  *  有序样式序号只数勾选条目（不留空洞）。 */
 function BulletList({
@@ -141,28 +226,13 @@ function BulletList({
   const pairs = bulletPairs(bullets, marks);
   let seq = 0;
   const renderItem = ({ text, marked }: { text: string; marked: boolean }) => {
-    const num = marked ? ++seq : 0;
+    const num = marked ? seq++ : 0;
+    const glyphColor = isATS ? "#111" : color;
     return (
-      <li key={num > 0 ? `m${num}` : `u${num}-${text}`} className="flex gap-[0.6em] break-inside-avoid text-[0.92em]" style={{ color: isATS ? "#222" : "#2b3a36" }}>
+      <li key={marked ? `m${num}` : `u${num}-${text}`} className="flex gap-[0.55em] break-inside-avoid text-[0.92em]" style={{ color: isATS ? "#222" : "#2b3a36" }}>
         {marked && (
-          <span className={cx("shrink-0 leading-none", bulletStyle === "ordered" ? "mt-[0.15em]" : "mt-[0.52em]")}>
-            {bulletStyle === "ordered" ? (
-              <span className="inline-block min-w-[1.35em] text-right font-mono text-[0.86em] font-bold tabular-nums" style={{ color: isATS ? "#111" : color }}>
-                {num}.
-              </span>
-            ) : bulletStyle === "disc" ? (
-              <span className="block h-[5px] w-[5px] rounded-full" style={{ background: isATS ? "#111" : color }} />
-            ) : bulletStyle === "arrow" ? (
-              <IconArrowRight size={11} style={{ color: isATS ? "#111" : color }} />
-            ) : bulletStyle === "square" ? (
-              <span className="block h-[5px] w-[5px]" style={{ background: isATS ? "#111" : color }} />
-            ) : bulletStyle === "check" ? (
-              <IconCheck size={11} style={{ color: isATS ? "#111" : color }} />
-            ) : bulletStyle === "circle" ? (
-              <span className="block h-[6px] w-[6px] rounded-full border-[1.5px]" style={{ borderColor: isATS ? "#111" : color }} />
-            ) : (
-              <span className="block h-[5px] w-[5px] rotate-45" style={{ background: isATS ? "#111" : color }} />
-            )}
+          <span className={cx("shrink-0 leading-none", bulletStyle === "ordered" ? "mt-[0.15em]" : "mt-[0.34em]")}>
+            <BulletGlyph style={bulletStyle} index={num} color={glyphColor} size="resume" />
           </span>
         )}
         <span className="flex-1">{renderRich(text)}</span>
@@ -370,13 +440,18 @@ function SectionBadge({ section, color, shape }: { section: Section; color: stri
   const Icon = SECTION_ICON[section.type];
   return (
     <span
-      className="flex h-[1.25em] w-[1.25em] shrink-0 items-center justify-center"
-      style={{ background: color, borderRadius: shape === "circle" ? "9999px" : "0.3em" }}
+      className="flex h-[1.32em] w-[1.32em] shrink-0 items-center justify-center"
+      style={{
+        background: `${color}14`,
+        color,
+        boxShadow: `inset 0 0 0 1px ${color}30`,
+        borderRadius: shape === "circle" ? "9999px" : "0.34em",
+      }}
     >
       {Icon ? (
-        <Icon className="h-[0.68em] w-[0.68em] text-white" />
+        <Icon className="h-[0.72em] w-[0.72em]" />
       ) : (
-        <span className="h-[0.3em] w-[0.3em] rounded-full bg-white" />
+        <span className="h-[0.32em] w-[0.32em] rounded-full" style={{ background: color }} />
       )}
     </span>
   );
@@ -489,7 +564,7 @@ function AcademicSectionBlock({ section, color, headerLayout, bulletStyle }: { s
   );
 }
 
-function AcademicPhotoSheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
+function AcademicPhotoSheet({ resume }: { resume: Resume; forPrint?: boolean }) {
   const color = resume.theme.primary_color;
   const fs = resume.theme.font_size;
   const info = resume.data.basic_info;
@@ -501,7 +576,7 @@ function AcademicPhotoSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
 
   return (
     <div
-      className={cx("resume-sheet bg-white", !forPrint && "shadow-xl shadow-ink-950/15")}
+      className="resume-sheet bg-white"
       style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), color: "#222", ...densityVars(resume.theme.density) }}
     >
       {basicVisible && (
@@ -574,7 +649,7 @@ function ContactBar({ contacts, className, separator = "|" }: { contacts: string
 }
 
 /** 瑞士网格时间轴模板：左侧 116px 栏目列，右侧高可读内容列，极简杂志排版 */
-function SwissGridSheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
+function SwissGridSheet({ resume }: { resume: Resume; forPrint?: boolean }) {
   const color = resume.theme.primary_color;
   const fs = resume.theme.font_size;
   const info = resume.data.basic_info;
@@ -595,7 +670,7 @@ function SwissGridSheet({ resume, forPrint }: { resume: Resume; forPrint?: boole
 
   return (
     <div
-      className={cx("resume-sheet bg-white", !forPrint && "shadow-xl shadow-ink-950/15")}
+      className="resume-sheet bg-white"
       style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density) }}
     >
       {basicVisible && (info.name || info.title || contacts.length > 0) && (
@@ -669,7 +744,7 @@ function SwissGridSheet({ resume, forPrint }: { resume: Resume; forPrint?: boole
 }
 
 /** 现代双栏侧边栏模板：左侧淡染侧栏（联系、技能、教育、证书），右侧主栏（总结、工作、项目、自定义） */
-function ExecutiveSidebarSheet({ resume, forPrint }: { resume: Resume; forPrint?: boolean }) {
+function ExecutiveSidebarSheet({ resume }: { resume: Resume; forPrint?: boolean }) {
   const color = resume.theme.primary_color;
   const fs = resume.theme.font_size;
   const info = resume.data.basic_info;
@@ -694,7 +769,7 @@ function ExecutiveSidebarSheet({ resume, forPrint }: { resume: Resume; forPrint?
 
   return (
     <div
-      className={cx("resume-sheet bg-white", !forPrint && "shadow-xl shadow-ink-950/15")}
+      className="resume-sheet bg-white"
       style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(resume.theme.font_family), ...densityVars(resume.theme.density) }}
     >
       {basicVisible && (info.name || info.title || contacts.length > 0) && (
@@ -808,27 +883,14 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
         </header>
       ) : (
         <header data-resume-section={basicSection?.section_id} className="mb-[var(--sec-gap)]">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h1 className="font-[700] leading-tight" style={{ fontSize: "2.3em", color: "#101817", letterSpacing: "-0.01em" }}>
-                {renderRich(info.name || untitled)}
-              </h1>
-              {info.title && (
-                <p className="mt-1 text-[1.1em] font-medium" style={{ color }}>
-                  {renderRich(info.title)}
-                </p>
-              )}
-            </div>
-            {/* 单栏中文模板保留右上角姓名首字色块锚点；英文版式省略中式印章色块，更契合国际审美 */}
-            {resume.locale !== "en" && (
-              <div
-                className="mb-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                style={{ background: `linear-gradient(135deg, ${color}, ${color}bf)` }}
-              >
-                <span className="font-bold text-white" style={{ fontSize: "1.35em" }}>
-                  {(stripHtml(info.name).replace(/\*\*/g, "") || "?").slice(0, 1)}
-                </span>
-              </div>
+          <div>
+            <h1 className="font-[700] leading-tight" style={{ fontSize: "2.25em", color: "#101817", letterSpacing: "-0.01em" }}>
+              {renderRich(info.name || untitled)}
+            </h1>
+            {info.title && (
+              <p className="mt-1 text-[1.08em] font-semibold" style={{ color }}>
+                {renderRich(info.title)}
+              </p>
             )}
           </div>
           <ContactBar contacts={contacts} className="mt-[var(--head-gap)] text-[0.85em] text-ink-500" />
@@ -838,7 +900,7 @@ export function ResumeSheet({ resume, forPrint }: { resume: Resume; forPrint?: b
 
   return (
     <div
-      className={cx("resume-sheet bg-white", !forPrint && "shadow-xl shadow-ink-950/15")}
+      className="resume-sheet bg-white"
       style={{ fontSize: `${fs}px`, lineHeight: "var(--lh)", fontFamily: fontStack(effectiveFont), ...densityVars(effectiveDensity) }}
     >
       {headerEl}

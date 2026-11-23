@@ -22,7 +22,7 @@ function ResumeThumbnail({
           transformOrigin: "top center",
         }}
       >
-        <div className="shadow-lg shadow-ink-950/15 ring-1 ring-ink-900/8">
+        <div className="a4-paper-frame overflow-hidden">
           <A4Sheet resume={resume} />
         </div>
       </div>

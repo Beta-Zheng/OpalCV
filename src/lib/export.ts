@@ -1345,16 +1345,12 @@ async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null
         }
         y = Math.max(y, startHeaderY + avH, startHeaderY + badgeS) + secGap;
       } else {
-        // modern_single_column (现代单栏：带右上角首字徽章)
-        const showMonogram = prep.locale !== "en";
-        const monoSize = 44 * scale;
-        const headerTextW = showMonogram ? contentW - monoSize - 16 * scale : contentW;
-        const startHeaderY = y;
+        // modern_single_column (现代单栏：无右上角姓氏首字方块徽标，干净排版)
         const nameFs = baseFs * 2.25;
         y = drawWrappedRuns(
           parseInlineRuns(info.name || "未命名", { bold: true, color: "101817" }),
           padX,
-          headerTextW,
+          contentW,
           nameFs,
           nameFs * 1.16,
           y
@@ -1364,23 +1360,11 @@ async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null
           y = drawWrappedRuns(
             parseInlineRuns(info.title, { bold: true, color: primaryHex }),
             padX,
-            headerTextW,
+            contentW,
             baseFs * 1.08,
             baseFs * 1.35,
             y
           );
-        }
-        if (!dryRun && showMonogram) {
-          const mx = padX + contentW - monoSize;
-          const my = startHeaderY + 4 * scale;
-          drawRoundedRect(ctx, mx, my, monoSize, monoSize, 12 * scale);
-          ctx.fillStyle = primaryCss;
-          ctx.fill();
-          const firstChar = (plainText(info.name).trim() || "?").slice(0, 1);
-          setFont(baseFs * 1.35, true, false);
-          ctx.fillStyle = "#FFFFFF";
-          const cw = ctx.measureText(firstChar).width;
-          ctx.fillText(firstChar, mx + (monoSize - cw) / 2, my + monoSize * 0.66);
         }
         if (contactList.length > 0) {
           y += headGap * 0.8;
@@ -1671,29 +1655,34 @@ async function renderCanvasPageToJpeg(resume: Resume): Promise<Uint8Array | null
         }
         sy += hFs * 1.15 + headGap;
       } else {
-        // modern_single_column / academic_photo / executive_sidebar (带图标徽章 + 右侧淡分隔线)
-        const badgeS = hFs * 1.14;
+        // modern_single_column / academic_photo / executive_sidebar (柔彩描边图标徽章 + 右侧淡分隔线)
+        const badgeS = hFs * 1.18;
         if (!dryRun) {
+          const badgeY = sy + (hFs - badgeS) * 0.35;
           drawRoundedRect(
             ctx,
             innerX,
-            sy + (hFs - badgeS) * 0.35,
+            badgeY,
             badgeS,
             badgeS,
-            isAcademic ? badgeS / 2 : badgeS * 0.26
+            isAcademic ? badgeS / 2 : badgeS * 0.28
           );
-          ctx.fillStyle = primaryCss;
+          ctx.fillStyle = `#${primaryHex}14`;
           ctx.fill();
-          // 徽章中心白色内点
-          ctx.fillStyle = "#FFFFFF";
+          ctx.strokeStyle = `#${primaryHex}30`;
+          ctx.lineWidth = Math.max(1, 0.9 * scale);
+          ctx.stroke();
+          // 徽章中心精致四芒菱形/圆核
+          const cxB = innerX + badgeS / 2;
+          const cyB = badgeY + badgeS / 2;
+          const rB = badgeS * 0.22;
+          ctx.fillStyle = primaryCss;
           ctx.beginPath();
-          ctx.arc(
-            innerX + badgeS / 2,
-            sy + (hFs - badgeS) * 0.35 + badgeS / 2,
-            badgeS * 0.18,
-            0,
-            Math.PI * 2
-          );
+          ctx.moveTo(cxB, cyB - rB);
+          ctx.lineTo(cxB + rB, cyB);
+          ctx.lineTo(cxB, cyB + rB);
+          ctx.lineTo(cxB - rB, cyB);
+          ctx.closePath();
           ctx.fill();
 
           ctx.fillStyle = primaryCss;

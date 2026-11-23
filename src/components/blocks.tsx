@@ -44,6 +44,7 @@ import {
   IconX,
 } from "./icons";
 import { Confirm, useActionMenu } from "./ui";
+import { BulletGlyph } from "./template";
 import type { ResumeLocation } from "../lib/preview-navigation";
 
 /* ---------------- 基础表单件 ---------------- */
@@ -333,7 +334,7 @@ export function TagInput({
   );
 }
 
-/** 要点符号：编辑器与预览保持一致的视觉 */
+/** 要点符号：编辑器行首、下拉选择器与预览共用同一套高精度 SVG 几何符号 */
 function BulletMarker({
   style,
   index,
@@ -341,25 +342,7 @@ function BulletMarker({
   style: BulletStyleKey;
   index: number;
 }) {
-  if (style === "ordered")
-    return (
-      <span className="inline-block min-w-[1.2em] text-[12px] font-semibold tabular-nums">
-        {index + 1}.
-      </span>
-    );
-  if (style === "disc")
-    return <span className="block h-[5px] w-[5px] rounded-full bg-current" />;
-  if (style === "square")
-    return <span className="block h-[5px] w-[5px] bg-current" />;
-  if (style === "circle")
-    return (
-      <span className="block h-[6px] w-[6px] rounded-full border-[1.5px] border-current" />
-    );
-  if (style === "arrow")
-    return <IconArrowRight size={12} className="text-current" />;
-  if (style === "check")
-    return <IconCheck size={12} className="text-current" />;
-  return <span className="block h-[5px] w-[5px] rotate-45 bg-current" />;
+  return <BulletGlyph style={style} index={index} size="editor" />;
 }
 
 const BULLET_LABEL_EN: Record<BulletStyleKey, string> = {
@@ -396,18 +379,20 @@ function BulletStyleSelect({
         aria-expanded={open}
         title={t("本模块要点列表样式（作用于该模块全部条目）", "Bullet marker style for this section")}
         className={cx(
-          "editor-action inline-flex items-center gap-1 rounded-full px-2.5 text-[12.5px] font-medium transition-colors",
+          "editor-action inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] font-medium transition-all",
           open
-            ? "bg-brand-50 text-brand-700"
-            : "bg-surface text-ink-500 shadow-xs hover:text-brand-700"
+            ? "bg-brand-500/12 text-brand-700 ring-1 ring-brand-500/25"
+            : "bg-surface text-ink-600 shadow-xs ring-1 ring-ink-900/6 hover:bg-brand-50/70 hover:text-brand-700"
         )}
       >
-        <span className="font-mono text-brand-600">{cur.sample}</span>
-        {t(cur.label, BULLET_LABEL_EN[cur.key])}
+        <span className="flex h-4 w-4 items-center justify-center text-brand-600">
+          <BulletGlyph style={cur.key} index={0} size="menu" />
+        </span>
+        <span>{t(cur.label, BULLET_LABEL_EN[cur.key])}</span>
         <IconChevronDown
-          size={10}
+          size={11}
           className={cx(
-            "transition-transform duration-150",
+            "opacity-70 transition-transform duration-150",
             open && "rotate-180"
           )}
         />
@@ -416,9 +401,9 @@ function BulletStyleSelect({
         <div
           role="menu"
           aria-label={t("成果列表样式", "Bullet style")}
-          className="app-menu glass-tip absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-2xl p-1.5"
+          className="app-menu glass-tip absolute bottom-full right-0 mb-1.5 z-40 w-48 !top-auto !mt-0 !max-h-none overflow-visible rounded-2xl p-1.5"
         >
-          <p className="px-2 py-1 text-[12px] font-bold uppercase tracking-wider text-ink-400">
+          <p className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-ink-400">
             {t("成果列表样式", "Bullet Style")}
           </p>
           {BULLET_STYLE_OPTIONS.map((o) => (
@@ -433,15 +418,24 @@ function BulletStyleSelect({
                 setOpen(false);
               }}
               className={cx(
-                "flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[12px] transition",
+                "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-[12.5px] transition",
                 value === o.key
-                  ? "bg-brand-50 font-semibold text-brand-700"
+                  ? "bg-brand-500/12 font-semibold text-brand-700"
                   : "text-ink-600 hover:bg-surface/80"
               )}
             >
-              <span className="w-4 font-mono text-[12px]">{o.sample}</span>
-              {t(o.label, BULLET_LABEL_EN[o.key])}
-              {value === o.key && <IconCheck size={11} className="ml-auto" />}
+              <span
+                className={cx(
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
+                  value === o.key
+                    ? "bg-brand-500/15 text-brand-600"
+                    : "bg-ink-900/5 text-ink-600"
+                )}
+              >
+                <BulletGlyph style={o.key} index={0} size="menu" />
+              </span>
+              <span>{t(o.label, BULLET_LABEL_EN[o.key])}</span>
+              {value === o.key && <IconCheck size={12} className="ml-auto text-brand-600" />}
             </button>
           ))}
         </div>
@@ -529,12 +523,17 @@ function BulletsEdit({
                     ? t("已勾选：预览显示列表符号（点击取消）", "Bullet marker shown (click to hide)")
                     : t("未勾选：预览不显示列表符号（点击勾选）", "Bullet marker hidden (click to show)")
                 }
-                className="mt-[0.55rem] flex h-6 w-6 shrink-0 items-center justify-center rounded text-brand-600 transition hover:bg-paper-200/80"
+                className={cx(
+                  "mt-[0.42rem] flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all",
+                  marked
+                    ? "bg-brand-500/10 text-brand-600 ring-1 ring-brand-500/20 hover:bg-brand-500/16"
+                    : "bg-ink-900/4 text-ink-400 ring-1 ring-ink-900/8 hover:bg-ink-900/8 hover:text-ink-600"
+                )}
               >
                 <span
                   className={cx(
-                    "leading-none transition-opacity duration-150",
-                    marked ? "opacity-100" : "opacity-25"
+                    "flex items-center justify-center leading-none transition-opacity duration-150",
+                    marked ? "opacity-100" : "opacity-35"
                   )}
                 >
                   <BulletMarker style={bulletStyle} index={ordinal} />
@@ -930,11 +929,11 @@ export function BlockCard({
               opacity: 0,
               transition: { duration: 0.16, ease: "easeIn" },
             }}
-            className="overflow-hidden"
+            className="overflow-visible"
           >
             <div
               className={cx(
-                "grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2 bg-subtle/45 px-3.5 py-3.5",
+                "@container grid grid-cols-1 gap-x-3 gap-y-2.5 @md:grid-cols-2 bg-subtle/45 px-3.5 py-3.5",
                 !block.visible && "opacity-50"
               )}
             >
