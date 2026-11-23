@@ -126,12 +126,14 @@ const BULLET_LABEL_EN: Record<BulletStyleKey, string> = {
 
 function EditorActionMenu({
   label,
+  icon,
   ariaLabel,
   className,
   align = "left",
   items,
 }: {
-  label: string;
+  label?: string;
+  icon?: ReactNode;
   ariaLabel: string;
   className?: string;
   align?: "left" | "right";
@@ -142,27 +144,34 @@ function EditorActionMenu({
   useActionMenu(open, setOpen, container);
   return (
     <div ref={container} className={cx("relative", className)}>
-      <Btn
-        size="sm"
-        variant="outline"
+      <button
+        type="button"
+        title={ariaLabel}
         aria-label={ariaLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="gap-1"
+        className={cx(
+          "inline-flex items-center justify-center gap-1 rounded-full transition-colors",
+          icon && !label
+            ? "tool-btn h-8 px-2 text-ink-600"
+            : "border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-subtle",
+          open && "bg-brand-50 text-brand-700"
+        )}
       >
-        {label}
+        {icon}
+        {label && <span>{label}</span>}
         <IconChevronDown
-          size={13}
+          size={12}
           className={cx("transition-transform duration-150", open && "rotate-180")}
         />
-      </Btn>
+      </button>
       {open && (
         <div
           role="menu"
           aria-label={ariaLabel}
           className={cx(
-            "app-menu absolute z-30 min-w-40",
+            "app-menu absolute top-full z-50 mt-1.5 min-w-44",
             align === "right" ? "right-0" : "left-0"
           )}
         >
@@ -629,7 +638,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
   return (
     <div className="flex h-full flex-col">
       <header
-        className="shrink-0 border-b border-line/60 bg-page/90 px-3 py-2 backdrop-blur sm:px-5"
+        className="relative z-30 shrink-0 border-b border-line/60 bg-page/90 px-3 py-2 backdrop-blur sm:px-5"
         data-testid="editor-header"
       >
         {/* 第一行：文档标题、保存状态与文档级操作 */}
@@ -685,19 +694,40 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               </button>
             </div>
             <div className="hidden sm:contents">
-              <Btn variant="ghost" size="sm" className="rounded-full px-2.5" onClick={() => setTool("versions")}>
-                {t("历史版本", "History")}
-              </Btn>
+              <button
+                type="button"
+                className="tool-btn rounded-full"
+                title={t("历史版本", "History")}
+                aria-label={t("历史版本", "History")}
+                onClick={() => setTool("versions")}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="6" y1="3" x2="6" y2="15" />
+                  <circle cx="18" cy="6" r="3" />
+                  <circle cx="6" cy="18" r="3" />
+                  <path d="M18 9a9 9 0 0 1-9 9" />
+                </svg>
+              </button>
             </div>
-            <Btn
-              variant="ghost"
-              size="sm"
-              className="shrink-0 rounded-full px-2.5"
+            <button
+              type="button"
+              className="tool-btn shrink-0 rounded-full"
+              title={t("模板与设置", "Template & Style")}
+              aria-label={t("模板与设置", "Template & Style")}
               onClick={() => setSettingsOpen(true)}
             >
-              <span className="hidden sm:inline">{t("模板与设置", "Template & Style")}</span>
-              <span className="sm:hidden">{t("设置", "Style")}</span>
-            </Btn>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="2" y1="14" x2="6" y2="14" />
+                <line x1="10" y1="8" x2="14" y2="8" />
+                <line x1="18" y1="16" x2="22" y2="16" />
+              </svg>
+            </button>
             <EditorActionMenu
               label={t("更多", "More")}
               ariaLabel={t("编辑工具", "Editor tools")}
@@ -782,51 +812,72 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
           </div>
 
           <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:ml-auto sm:inline-flex">
-            <Btn
-              variant="ghost"
-              size="sm"
+            <button
+              type="button"
               aria-pressed={outlineOpen}
+              aria-label={t("目录", "Outline")}
+              title={t("目录", "Outline")}
               className={cx(
-                "px-2.5",
+                "tool-btn rounded-full",
                 outlineOpen && "bg-brand-50 text-brand-700"
               )}
               onClick={toggleOutline}
             >
-              <IconBookOpen size={14} />
-              {t("目录", "Outline")}
-            </Btn>
-            <Btn
-              variant="ghost"
-              size="sm"
+              <IconBookOpen size={15} />
+            </button>
+            <button
+              type="button"
               aria-pressed={rightOpen && panelTab === "ai"}
+              aria-label={t("建议", "AI Polish")}
+              title={t("建议", "AI Polish")}
               className={cx(
-                "px-2.5",
+                "tool-btn relative rounded-full",
                 rightOpen && panelTab === "ai" && "bg-brand-50 text-brand-700"
               )}
               onClick={() => openRightPanel("ai", true)}
             >
-              <IconPanelRight size={14} />
-              {t("建议", "AI Polish")}
-              {rightOpen && panelTab === "ai" && <span className="sp-dot" aria-hidden="true" />}
-            </Btn>
-            <Btn
-              size="sm"
+              <IconPanelRight size={15} />
+              {rightOpen && panelTab === "ai" && (
+                <span className="sp-dot absolute right-1.5 top-1.5" aria-hidden="true" />
+              )}
+            </button>
+            <button
+              type="button"
               aria-pressed={!!resume.target && rightOpen && panelTab === "jd"}
+              aria-label={resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
+              title={resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
               className={cx(
-                "px-2.5",
-                !!resume.target && rightOpen && panelTab === "jd" && "border-brand-400 bg-brand-50 text-brand-700"
+                "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11.5px] font-medium transition-colors",
+                !!resume.target && rightOpen && panelTab === "jd"
+                  ? "border-brand-400 bg-brand-50 text-brand-700"
+                  : resume.target
+                  ? "border-brand-200 bg-brand-50/70 text-brand-700 hover:bg-brand-100/70"
+                  : "border-line bg-surface text-ink-700 hover:bg-subtle"
               )}
               onClick={() => {
                 if (!resume.target) setTool("target");
                 else openRightPanel("jd", true);
               }}
             >
-              {resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
-            </Btn>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="4" />
+                <circle cx="12" cy="12" r="1" fill="currentColor" />
+              </svg>
+              <span>{resume.target ? t("岗位", "JD") : t("定制岗位", "Tailor")}</span>
+            </button>
 
             <EditorActionMenu
-              label={t("辅助工具", "Tools")}
+              align="right"
               ariaLabel={t("辅助工具", "Tools")}
+              icon={
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              }
               items={[
                 { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
                 { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
