@@ -25,15 +25,22 @@ export interface ParseResult {
  *   2) 紧排/微调字距时 pdfjs 不会补空格，导致 "WorkExperience" 粘连。
  * 这里按 (y 降序, x 升序) 聚行、并按横坐标间隙补空格来修正。 */
 
-interface PageTextItem {
+export interface PageTextItem {
   str: string;
   transform: number[]; // [a,b,c,d,e,f]，e/f 为 x/y 平移
   width?: number;
   height?: number;
 }
 
+function isValidTextItem(it: unknown): it is PageTextItem {
+  if (!it || typeof it !== "object") return false;
+  const candidate = it as Partial<PageTextItem>;
+  return typeof candidate.str === "string" && Array.isArray(candidate.transform) && candidate.transform.length >= 6;
+}
+
 function clusterLines(items: PageTextItem[]): PageTextItem[][] {
-  const sorted = [...items].sort((a, b) => b.transform[5] - a.transform[5] || a.transform[4] - b.transform[4]);
+  const valid = items.filter(isValidTextItem);
+  const sorted = [...valid].sort((a, b) => b.transform[5] - a.transform[5] || a.transform[4] - b.transform[4]);
   const lines: PageTextItem[][] = [];
   let cur: PageTextItem[] = [];
   let curY: number | null = null;
@@ -61,36 +68,210 @@ function isCjk(s: string): boolean {
   return CJK_RE.test(s);
 }
 
-/** 把一页文本项按「栏」切分（基于 x 坐标的栏间空档）。
- *  单栏页返回 [items]（不切分）；双栏页按最大的栏间空档切成左右两栏，
- *  每栏各自按 y 降序排列，从而保证「左栏从上到下 → 右栏从上到下」的正确阅读顺序，
- *  避免 clusterLines 把左右栏交错并成「同一视觉行」导致的顺序错乱。 */
-function splitIntoColumns(items: PageTextItem[]): PageTextItem[][] {
-  if (items.length < 6) return [items];
-  const meta = items.map((it) => {
-    const x = it.transform[4];
-    const w = it.width ?? 0;
-    return { x0: x, x1: x + w, xc: x + w / 2, it };
-  });
-  const minX = Math.min(...meta.map((m) => m.x0));
-  const maxX1 = Math.max(...meta.map((m) => m.x1));
-  const pageW = maxX1 - minX;
-  if (pageW < 120) return [items];
-  const sorted = [...meta].sort((a, b) => a.xc - b.xc);
-  // 项间空档大于阈值（页宽 8% 且绝对值 > 18）才视为栏间空档；过小仅是词/字间距
-  const gaps: Array<{ pos: number; size: number }> = [];
-  for (let i = 1; i < sorted.length; i++) {
-    const gap = sorted[i].x0 - sorted[i - 1].x1;
-    if (gap > Math.max(18, pageW * 0.08)) gaps.push({ pos: (sorted[i - 1].x1 + sorted[i].x0) / 2, size: gap });
+interface GutterInfo {
+  start: number;
+  end: number;
+  pos: number;
+  size: number;
+}
+
+/** 基于水平区间投影（x0..x1 合并）在单个 y-band 内查找垂直栏间空档并切分多栏（支持 2 栏、3 栏及侧边栏+主栏）。 */
+function splitBandByGutters(
+  items: PageTextItem[],
+  pageW: number
+): { cols: PageTextItem[][]; gaps: GutterInfo[] } | null {
+  const nonWs = items.filter((it) => it.str.trim().length > 0);
+  if (nonWs.length < 4) return null;
+
+  const metas = nonWs
+    .map((it) => {
+      const x = it.transform[4];
+      const w = Math.max(0, it.width ?? 0);
+      return { x0: x, x1: x + w };
+    })
+    .sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
+
+  const minGap = Math.max(18, pageW * 0.05);
+  const intervals: Array<{ x0: number; x1: number }> = [];
+  for (const m of metas) {
+    const last = intervals[intervals.length - 1];
+    if (!last || m.x0 - last.x1 >= minGap) {
+      intervals.push({ x0: m.x0, x1: m.x1 });
+    } else {
+      last.x1 = Math.max(last.x1, m.x1);
+    }
   }
-  if (!gaps.length) return [items];
-  // 取最大空档作为切分线（v1 单切分 → 两栏，覆盖绝大多数简历双栏场景）
-  const split = gaps.sort((a, b) => b.size - a.size)[0].pos;
-  const left = meta.filter((m) => m.xc < split).map((m) => m.it);
-  const right = meta.filter((m) => m.xc >= split).map((m) => m.it);
-  // 两侧都要有足够内容，否则视为单行内偶然的大间距（如拉开字距的标题），不切分
-  if (left.length < 2 || right.length < 2) return [items];
-  return [left, right];
+  if (intervals.length < 2) return null;
+
+  const rawGaps: GutterInfo[] = [];
+  for (let i = 1; i < intervals.length; i++) {
+    const start = intervals[i - 1].x1;
+    const end = intervals[i].x0;
+    rawGaps.push({ start, end, pos: (start + end) / 2, size: end - start });
+  }
+  const maxGap = Math.max(...rawGaps.map((g) => g.size));
+  const activeGaps = rawGaps.filter((g) => g.size >= Math.max(minGap, maxGap * 0.45));
+  if (!activeGaps.length) return null;
+
+  const partition = (gaps: GutterInfo[]): PageTextItem[][] => {
+    const cols: PageTextItem[][] = Array.from({ length: gaps.length + 1 }, () => []);
+    for (const it of items) {
+      const xc = it.transform[4] + Math.max(0, it.width ?? 0) / 2;
+      let idx = 0;
+      while (idx < gaps.length && xc >= gaps[idx].pos) idx++;
+      cols[idx].push(it);
+    }
+    return cols;
+  };
+
+  const cols = partition(activeGaps);
+  if (cols.every((c) => c.filter((it) => it.str.trim().length > 0).length >= 2)) {
+    return { cols, gaps: activeGaps };
+  }
+
+  // 若多栏切分中出现过稀疏的栏，降级尝试最大单栏空档
+  if (activeGaps.length > 1) {
+    const largest = [...activeGaps].sort((a, b) => b.size - a.size)[0];
+    const twoCols = partition([largest]);
+    if (twoCols.every((c) => c.filter((it) => it.str.trim().length > 0).length >= 2)) {
+      return { cols: twoCols, gaps: [largest] };
+    }
+  }
+  return null;
+}
+
+function lineMetrics(ln: PageTextItem[]): { x0: number; x1: number; width: number; maxInternalGap: number } {
+  const nonWs = ln.filter((it) => it.str.trim().length > 0);
+  if (!nonWs.length) return { x0: 0, x1: 0, width: 0, maxInternalGap: 0 };
+  const sorted = [...nonWs].sort((a, b) => a.transform[4] - b.transform[4]);
+  const x0 = Math.min(...sorted.map((it) => it.transform[4]));
+  const x1 = Math.max(...sorted.map((it) => it.transform[4] + Math.max(0, it.width ?? 0)));
+  let maxInternalGap = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const prevEnd = sorted[i - 1].transform[4] + Math.max(0, sorted[i - 1].width ?? 0);
+    maxInternalGap = Math.max(maxInternalGap, sorted[i].transform[4] - prevEnd);
+  }
+  return { x0, x1, width: x1 - x0, maxInternalGap };
+}
+
+/** 把一页文本项按「y-band 与栏」切分，按阅读顺序返回各区域/各栏文本项组。
+ *  先通过水平区间投影直接探测通栏无遮挡的 2 栏/多栏/侧边栏布局；
+ *  若存在通栏横幅、混合单双栏或居中标题，则先按 y-band 剥离通栏行，再对分栏区做列聚类，
+ *  从而保证「通栏页眉 → 左栏从上到下 → 右栏从上到下 → 通栏页脚」的准确阅读顺序。 */
+export function splitIntoColumns(items: PageTextItem[]): PageTextItem[][] {
+  const valid = items.filter(isValidTextItem);
+  if (!valid.length) return [];
+  const nonWs = valid.filter((it) => it.str.trim().length > 0);
+  if (nonWs.length < 4) return [valid];
+
+  const minX = Math.min(...nonWs.map((it) => it.transform[4]));
+  const maxX1 = Math.max(...nonWs.map((it) => it.transform[4] + Math.max(0, it.width ?? 0)));
+  const pageW = maxX1 - minX;
+  if (pageW < 120) return [valid];
+
+  // 1. 整页可直接按垂直空档切分（纯双栏、三栏、侧边栏+主栏）
+  const direct = splitBandByGutters(valid, pageW);
+  if (direct) return direct.cols;
+
+  // 2. 混合版式：按视觉行识别候选通栏行（连续宽行且无栏间大空档）
+  const lines = clusterLines(valid);
+  const gutterThresh = Math.max(18, pageW * 0.08);
+  const runs: Array<{ spanning: boolean; lines: PageTextItem[][] }> = [];
+  for (const ln of lines) {
+    const m = lineMetrics(ln);
+    const isSpanning = m.maxInternalGap <= gutterThresh && m.width >= pageW * 0.52;
+    const prev = runs[runs.length - 1];
+    if (prev && prev.spanning === isSpanning) {
+      prev.lines.push(ln);
+    } else {
+      runs.push({ spanning: isSpanning, lines: [ln] });
+    }
+  }
+
+  // 若候选通栏行并未真正跨过相邻分栏区的栏间空档（例如主栏内的长行），将其合并回分栏区
+  const mergedRuns: Array<{ spanning: boolean; lines: PageTextItem[][] }> = [];
+  for (let i = 0; i < runs.length; i++) {
+    const cur = runs[i];
+    if (!cur.spanning) {
+      mergedRuns.push(cur);
+      continue;
+    }
+    const prevRun = mergedRuns[mergedRuns.length - 1];
+    const nextRun = runs[i + 1];
+    const neighbor = (nextRun && !nextRun.spanning ? nextRun : prevRun && !prevRun.spanning ? prevRun : null);
+    const neighborSplit = neighbor ? splitBandByGutters(neighbor.lines.flat(), pageW) : null;
+    if (neighborSplit) {
+      const crossesAnyGap = cur.lines.some((ln) => {
+        const m = lineMetrics(ln);
+        return neighborSplit.gaps.some((g) => m.x0 < g.start && m.x1 > g.end);
+      });
+      if (!crossesAnyGap) {
+        if (prevRun && !prevRun.spanning) {
+          prevRun.lines.push(...cur.lines);
+          continue;
+        }
+        if (nextRun && !nextRun.spanning) {
+          nextRun.lines = [...cur.lines, ...nextRun.lines];
+          continue;
+        }
+      }
+    }
+    mergedRuns.push(cur);
+  }
+
+  // 合并相邻的同类型 run
+  const normalizedRuns: Array<{ spanning: boolean; lines: PageTextItem[][] }> = [];
+  for (const r of mergedRuns) {
+    const last = normalizedRuns[normalizedRuns.length - 1];
+    if (last && last.spanning === r.spanning) last.lines.push(...r.lines);
+    else normalizedRuns.push({ spanning: r.spanning, lines: [...r.lines] });
+  }
+
+  // 3. 兜底：若仍为单一整块且无法直接分栏（例如顶部居中短标题压在栏间空档上），尝试剥离首/尾 1-2 行
+  if (normalizedRuns.length === 1 && !normalizedRuns[0].spanning && lines.length >= 4) {
+    for (const k of [1, 2]) {
+      if (lines.length - k < 3) break;
+      const bodySplit = splitBandByGutters(lines.slice(k).flat(), pageW);
+      if (bodySplit) {
+        const topLines = lines.slice(0, k);
+        const touchesGutter = topLines.some((ln) => {
+          const m = lineMetrics(ln);
+          return bodySplit.gaps.some((g) => m.x0 < g.pos && m.x1 > g.pos);
+        });
+        if (touchesGutter) {
+          return [topLines.flat(), ...bodySplit.cols];
+        }
+      }
+    }
+    for (const k of [1, 2]) {
+      if (lines.length - k < 3) break;
+      const bodySplit = splitBandByGutters(lines.slice(0, lines.length - k).flat(), pageW);
+      if (bodySplit) {
+        const bottomLines = lines.slice(lines.length - k);
+        const touchesGutter = bottomLines.some((ln) => {
+          const m = lineMetrics(ln);
+          return bodySplit.gaps.some((g) => m.x0 < g.pos && m.x1 > g.pos);
+        });
+        if (touchesGutter) {
+          return [...bodySplit.cols, bottomLines.flat()];
+        }
+      }
+    }
+  }
+
+  const regions: PageTextItem[][] = [];
+  for (const r of normalizedRuns) {
+    const bandItems = r.lines.flat();
+    if (!bandItems.length) continue;
+    if (r.spanning) {
+      regions.push(bandItems);
+    } else {
+      const split = splitBandByGutters(bandItems, pageW);
+      if (split) regions.push(...split.cols);
+      else regions.push(bandItems);
+    }
+  }
+  return regions.length ? regions : [valid];
 }
 
 function joinColumnLines(lines: PageTextItem[][]): string {
@@ -121,15 +302,18 @@ function joinColumnLines(lines: PageTextItem[][]): string {
 }
 
 export function joinPageItems(items: PageTextItem[]): string {
-  const columns = splitIntoColumns(items);
-  if (columns.length <= 1) return joinColumnLines(clusterLines(items));
-  // 多栏：每栏内部按 y 降序（上→下），栏与栏之间用空行隔开，保证阅读顺序正确
-  return columns.map((col) => joinColumnLines(clusterLines(col))).join("\n\n");
+  const regions = splitIntoColumns(items);
+  if (!regions.length) return "";
+  if (regions.length === 1) return joinColumnLines(clusterLines(regions[0]));
+  // 多栏/混合版式：每栏或每个通栏区域内部按 y 降序（上→下），区域之间用空行隔开，保证阅读顺序正确
+  return regions
+    .map((region) => joinColumnLines(clusterLines(region)))
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /* 多栏探测：clusterLines 会把同一 y 的左右栏并到「同一视觉行」，所以双栏的真实特征是
- * 单行内部 x 坐标呈双峰（中间有明显空档）。命中后由 UI 提示用户核对/改用粘贴，
- * 而非默默产出错乱的阅读顺序（完整栏块分割属独立工程，暂不做）。 */
+ * 单行内部 x 坐标呈双峰（中间有明显空档）。命中后由 UI 提示用户核对/改用粘贴。 */
 export function detectMultiColumn(items: PageTextItem[]): boolean {
   const lines = clusterLines(items);
   if (lines.length < 3) return false;
@@ -148,29 +332,46 @@ export function detectMultiColumn(items: PageTextItem[]): boolean {
   return false;
 }
 
+const SCANNED_PDF_GUIDANCE =
+  "该 PDF 未包含可提取文本（可能是扫描件或纯图片 PDF），请先使用 OCR 工具识别文字，或改用「粘贴文本」/ 上传 DOCX 方式导入";
+
+/** 汇总多页 PDF 文本项并判定是否为扫描件/无文本层 PDF。 */
+export function analyzePdfPages(pages: PageTextItem[][]): ParseResult {
+  const parts: string[] = [];
+  let maybeMultiColumn = false;
+  for (const rawItems of pages) {
+    const pageItems = Array.isArray(rawItems) ? rawItems.filter(isValidTextItem) : [];
+    if (detectMultiColumn(pageItems)) maybeMultiColumn = true;
+    const pageText = joinPageItems(pageItems);
+    if (pageText.trim()) parts.push(pageText.trim());
+  }
+  const text = parts.join("\n");
+  if (text.replace(/\s/g, "").length < 20) {
+    return { ok: false, scanner: true, error: SCANNED_PDF_GUIDANCE };
+  }
+  return { ok: true, text, maybeMultiColumn };
+}
+
 /* ---------------- 文本提取（按文件类型分发） ---------------- */
 
 async function extractPdf(file: File): Promise<ParseResult> {
   try {
+    const buf = await file.arrayBuffer();
+    if (!buf.byteLength) {
+      return { ok: false, scanner: true, error: SCANNED_PDF_GUIDANCE };
+    }
     const pdfjs = await import("pdfjs-dist");
     const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
     pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-    const buf = await file.arrayBuffer();
     const doc = await pdfjs.getDocument({ data: buf }).promise;
-    const parts: string[] = [];
-    let maybeMultiColumn = false;
+    const pages: PageTextItem[][] = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
       const tc = await page.getTextContent();
-      if (detectMultiColumn(tc.items as PageTextItem[])) maybeMultiColumn = true;
-      parts.push(joinPageItems(tc.items as PageTextItem[]));
+      pages.push((tc?.items ?? []) as PageTextItem[]);
     }
     await doc.destroy();
-    const text = parts.map((l) => l.trim()).filter(Boolean).join("\n");
-    if (text.replace(/\s/g, "").length < 20) {
-      return { ok: false, scanner: true, error: "该 PDF 未包含可提取文本（可能是扫描件），请改用「粘贴文本」方式创建" };
-    }
-    return { ok: true, text, maybeMultiColumn };
+    return analyzePdfPages(pages);
   } catch (e) {
     return { ok: false, error: `PDF 解析失败：${e instanceof Error ? e.message : "未知错误"}` };
   }

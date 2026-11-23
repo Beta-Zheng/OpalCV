@@ -3,6 +3,7 @@ import {
   packDocument,
   unpackDocument,
   createDocumentStorage,
+  StorageConflictError,
   type DocumentBackend,
   type PackedDocument,
 } from "../document-storage";
@@ -139,5 +140,17 @@ describe("分离文档存储与安全迁移", () => {
     await Promise.all([first, second]);
     expect(backend.write).toHaveBeenCalledTimes(2);
     expect(await storage.getItem("resume")).toEqual({ state: { text: "b" } });
+  });
+  it("多标签 revision 冲突时报告 conflict，支持 forceSave 覆盖恢复", async () => {
+    const { storage, backend, flush, forceSave, status } = setup();
+    vi.mocked(backend.write).mockImplementationOnce(async (_name, _doc, opts) => {
+      if (!opts?.force) throw new StorageConflictError();
+    });
+    storage.setItem("resume", { state: { text: "local" } });
+    await flush();
+    expect(status).toHaveBeenLastCalledWith("conflict");
+    await forceSave();
+    expect(status).toHaveBeenLastCalledWith("saved");
+    expect(await storage.getItem("resume")).toEqual({ state: { text: "local" } });
   });
 });

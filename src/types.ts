@@ -138,6 +138,10 @@ export interface Resume {
     font_family?: FontKey;
     /** 布局紧凑度：紧凑 / 中等 / 宽松，用于一页简历的篇幅调节 */
     density?: DensityKey;
+    /** 自定义行高倍率（缺省跟随 density） */
+    line_height?: number;
+    /** 页边距预设：standard=默认 / narrow=窄边距（用于智能调页无损压缩） */
+    page_margin?: "standard" | "narrow";
     /** 条目头布局：row=标题居左·日期居右；stack=标题居上·信息居下 */
     header_layout?: HeaderLayoutKey;
     /** 要点列表样式：disc=圆点 / diamond=菱形 / arrow=箭头 / ordered=有序数字 */
@@ -321,8 +325,17 @@ export interface Suggestion {
 export interface TemplateConfig {
   template_id: string;
   name: string;
-  layout: "single_column" | "ats" | "photo_header";
+  layout:
+    | "single_column"
+    | "ats"
+    | "photo_header"
+    | "latex"
+    | "compact"
+    | "swiss_grid"
+    | "sidebar";
+  recommendedLocale: "zh" | "en" | "both";
   description: string;
+  descriptionEn: string;
 }
 
 export const TEMPLATES: TemplateConfig[] = [
@@ -330,19 +343,57 @@ export const TEMPLATES: TemplateConfig[] = [
     template_id: "modern_single_column",
     name: "现代单栏",
     layout: "single_column",
-    description: "彩色标题 · 单栏布局",
+    recommendedLocale: "zh",
+    description: "彩色标题 · 清晰层次 · 国内通用",
+    descriptionEn: "Accent headers · clean single-column layout",
+  },
+  {
+    template_id: "campus_compact",
+    name: "校招紧凑一页",
+    layout: "compact",
+    recommendedLocale: "zh",
+    description: "教育置顶 · 技能标签 · 一页高密度",
+    descriptionEn: "Education-first · skill chips · dense one-page fit",
+  },
+  {
+    template_id: "executive_sidebar",
+    name: "现代双栏侧边栏",
+    layout: "sidebar",
+    recommendedLocale: "zh",
+    description: "淡染侧栏信息 · 主栏聚焦经历",
+    descriptionEn: "Tinted sidebar for skills & education · wide experience column",
+  },
+  {
+    template_id: "academic_photo",
+    name: "学术头像",
+    layout: "photo_header",
+    recommendedLocale: "zh",
+    description: "证件照/校徽页眉 · 单栏正文 · 学术/国内投递",
+    descriptionEn: "Photo & crest header · single-column body",
+  },
+  {
+    template_id: "latex_minimal",
+    name: "海外英文极简 / LaTeX 风格",
+    layout: "latex",
+    recommendedLocale: "en",
+    description: "北美科技大厂标准 · 衬线极简 · 两行经历层级",
+    descriptionEn: "US Big Tech / Jake's style · serif · compact inline skills",
   },
   {
     template_id: "classic_ats",
     name: "经典 ATS",
     layout: "ats",
-    description: "黑白单栏 · 标准标题",
+    recommendedLocale: "en",
+    description: "黑白单栏 · 标准标题 · 最高 ATS 解析率",
+    descriptionEn: "Pure monochrome · standard headings · maximum ATS parsing",
   },
   {
-    template_id: "academic_photo",
-    name: "学术双栏",
-    layout: "photo_header",
-    description: "头像页眉 · 双栏布局",
+    template_id: "swiss_grid",
+    name: "瑞士网格时间轴",
+    layout: "swiss_grid",
+    recommendedLocale: "both",
+    description: "左侧栏目列 · 极简杂志网格 · 中英通用",
+    descriptionEn: "Left section rail · Swiss editorial grid · bilingual",
   },
 ];
 

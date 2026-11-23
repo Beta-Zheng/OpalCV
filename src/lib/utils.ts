@@ -1,4 +1,5 @@
 import type { FontKey, DensityKey, BulletStyleKey } from "../types";
+import { getUiLang } from "./i18n";
 
 export function uid(prefix = "id"): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random()
@@ -32,13 +33,14 @@ export function fmtDateCompact(iso: string): string {
 
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
+  const isEn = getUiLang() === "en";
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "刚刚";
-  if (m < 60) return `${m} 分钟前`;
+  if (m < 1) return isEn ? "just now" : "刚刚";
+  if (m < 60) return isEn ? `${m}m ago` : `${m} 分钟前`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} 小时前`;
+  if (h < 24) return isEn ? `${h}h ago` : `${h} 小时前`;
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d} 天前`;
+  if (d < 30) return isEn ? `${d}d ago` : `${d} 天前`;
   return fmtDate(iso);
 }
 
@@ -79,10 +81,11 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-/** 将图片文件读取为 base64 Data URL；超过 maxBytes 时拒绝 */
+/** 将图片文件读取为 Data URL；大图自动压缩缩放（长边 ≤ maxDim，JPEG 0.85），避免手机原图被拒或撑大导出文件 */
 export function fileToDataUrl(
   file: File,
-  maxBytes = 2 * 1024 * 1024
+  maxBytes = 20 * 1024 * 1024,
+  maxDim = 600
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -94,7 +97,56 @@ export function fileToDataUrl(
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const rawUrl = reader.result as string;
+      // 非浏览器 DOM 或 SVG / 小图直接返回，保留 PNG 透明背景（如校徽）
+      if (
+        typeof document === "undefined" ||
+        typeof Image === "undefined" ||
+        file.type === "image/svg+xml" ||
+        (file.size <= 160 * 1024 && file.type === "image/png")
+      ) {
+        resolve(rawUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const { naturalWidth: w, naturalHeight: h } = img;
+          if (!w || !h) {
+            resolve(rawUrl);
+            return;
+          }
+          const scale = Math.min(1, maxDim / Math.max(w, h));
+          const tw = Math.max(1, Math.round(w * scale));
+          const th = Math.max(1, Math.round(h * scale));
+          // 尺寸和体积都足够小则不二次编码
+          if (scale === 1 && file.size <= 220 * 1024) {
+            resolve(rawUrl);
+            return;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = tw;
+          canvas.height = th;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(rawUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, tw, th);
+          const outMime = file.type === "image/png" ? "image/png" : "image/jpeg";
+          const compressed = canvas.toDataURL(
+            outMime,
+            outMime === "image/jpeg" ? 0.85 : undefined
+          );
+          resolve(compressed.length < rawUrl.length ? compressed : rawUrl);
+        } catch {
+          resolve(rawUrl);
+        }
+      };
+      img.onerror = () => resolve(rawUrl);
+      img.src = rawUrl;
+    };
     reader.onerror = () => reject(new Error("读取图片失败"));
     reader.readAsDataURL(file);
   });
@@ -137,6 +189,33 @@ export function diffLines(a: string[], b: string[]): DiffOp[] {
   while (i < n) out.push({ kind: "del", text: a[i++] });
   while (j < m) out.push({ kind: "add", text: b[j++] });
   return out;
+}
+
+/** 词级 / 字符级行内 LCS Diff（单条要点前后对比高亮） */
+export function diffInlineTokens(fromText: string, toText: string): DiffOp[] {
+  const tokenize = (s: string): string[] =>
+    s.match(/[A-Za-z0-9_+#./%&@'-]+|\s+|[\s\S]/g) ?? [];
+  const a = tokenize(stripHtml(fromText));
+  const b = tokenize(stripHtml(toText));
+  if (a.length * b.length > 90000) {
+    return fromText === toText
+      ? [{ kind: "same", text: toText }]
+      : [
+          ...(fromText ? [{ kind: "del" as const, text: fromText }] : []),
+          ...(toText ? [{ kind: "add" as const, text: toText }] : []),
+        ];
+  }
+  const raw = diffLines(a, b);
+  const merged: DiffOp[] = [];
+  for (const op of raw) {
+    const last = merged[merged.length - 1];
+    if (last && last.kind === op.kind) {
+      last.text += op.text;
+    } else {
+      merged.push({ ...op });
+    }
+  }
+  return merged;
 }
 
 /** 将简历内容压平为纯文本，用于 JD 匹配 */
@@ -234,36 +313,47 @@ export function fontStack(key?: FontKey): string {
 /** 三种密度对应的 CSS 变量（间距 + 行高 + 页边距），便于一页简历调节篇幅 */
 export const DENSITY_VARS: Record<DensityKey, Record<string, string>> = {
   compact: {
-    "--sec-gap": "0.6rem",
-    "--entry-gap": "0.3rem",
-    "--bullet-gap": "0.14rem",
-    "--lh": "1.42",
-    "--head-gap": "0.4rem",
-    "--page-pad-x": "2.6rem",
-    "--page-pad-y": "2.2rem",
+    "--sec-gap": "0.42rem",
+    "--entry-gap": "0.2rem",
+    "--bullet-gap": "0.08rem",
+    "--lh": "1.32",
+    "--head-gap": "0.25rem",
+    "--page-pad-x": "2.35rem",
+    "--page-pad-y": "1.6rem",
   },
   medium: {
-    "--sec-gap": "1rem",
-    "--entry-gap": "0.55rem",
-    "--bullet-gap": "0.28rem",
-    "--lh": "1.6",
-    "--head-gap": "0.7rem",
-    "--page-pad-x": "3rem",
-    "--page-pad-y": "2.75rem",
+    "--sec-gap": "0.56rem",
+    "--entry-gap": "0.26rem",
+    "--bullet-gap": "0.12rem",
+    "--lh": "1.38",
+    "--head-gap": "0.35rem",
+    "--page-pad-x": "2.55rem",
+    "--page-pad-y": "1.85rem",
   },
   loose: {
-    "--sec-gap": "1.5rem",
-    "--entry-gap": "0.9rem",
-    "--bullet-gap": "0.45rem",
-    "--lh": "1.78",
-    "--head-gap": "1rem",
-    "--page-pad-x": "3.4rem",
-    "--page-pad-y": "3.2rem",
+    "--sec-gap": "1.45rem",
+    "--entry-gap": "0.85rem",
+    "--bullet-gap": "0.42rem",
+    "--lh": "1.75",
+    "--head-gap": "0.95rem",
+    "--page-pad-x": "3.3rem",
+    "--page-pad-y": "3.1rem",
   },
 };
 
-export function densityVars(key?: DensityKey): Record<string, string> {
-  return DENSITY_VARS[key ?? "medium"];
+export function densityVars(
+  key?: DensityKey,
+  overrides?: { line_height?: number; page_margin?: "standard" | "narrow" }
+): Record<string, string> {
+  const base = DENSITY_VARS[key ?? "medium"];
+  if (!overrides?.line_height && overrides?.page_margin !== "narrow") return base;
+  return {
+    ...base,
+    ...(overrides.line_height ? { "--lh": String(overrides.line_height) } : {}),
+    ...(overrides.page_margin === "narrow"
+      ? { "--page-pad-x": "1.9rem", "--page-pad-y": "1.35rem" }
+      : {}),
+  };
 }
 
 /** 解析某模块实际生效的要点列表样式：模块级设置 > 全局默认 > 菱形。

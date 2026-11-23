@@ -41,10 +41,10 @@ export default function UsageGuide() {
       if (event.key === GUIDE_STORAGE_KEY && preferences.read())
         setMode((previous) => (previous === "welcome" ? null : previous));
     };
-    window.addEventListener("touchstonecv-open-guide", reopen);
+    window.addEventListener("opalcv-open-guide", reopen);
     window.addEventListener("storage", sync);
     return () => {
-      window.removeEventListener("touchstonecv-open-guide", reopen);
+      window.removeEventListener("opalcv-open-guide", reopen);
       window.removeEventListener("storage", sync);
     };
   }, []);
@@ -60,7 +60,7 @@ export default function UsageGuide() {
       width={mode === "welcome" ? "max-w-lg" : "max-w-2xl"}
     >
       <ModalHeader
-        title={mode === "welcome" ? "第一次使用 TouchstoneCV？" : "使用指南"}
+        title={mode === "welcome" ? "欢迎使用 OpalCV" : "使用指南"}
         sub={
           mode === "welcome"
             ? "跟着动画看一遍，再动手试一下。"

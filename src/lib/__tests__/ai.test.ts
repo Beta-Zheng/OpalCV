@@ -39,6 +39,25 @@ describe("parseAIOutput：AI 输出 JSON 校验（PRD §15.1，禁止跳过校�
   it("非 JSON 输出抛错（触发上层重试 / 降级）", () => {
     expect(() => parseAIOutput("抱歉，我无法回答", mkBlock())).toThrow();
   });
+
+  it("字段结构守恒：原条目只有 bullets 没有 description 时，自动丢弃模型凭空生成的冗余 description", () => {
+    const orig = mkBlock({
+      description: "",
+      bullets: ["主导交易中台前端重构，缺陷率下降 42%"],
+    });
+    const raw = JSON.stringify({
+      suggested_block: {
+        description: "负责大型 Web 应用架构设计与性能优化综述",
+        bullets: ["主导交易中台前端架构重构，缺陷率下降 42%"],
+      },
+      explanation: "强化了架构重构表述",
+    });
+    const out = parseAIOutput(raw, orig);
+    expect(out.suggested_block.description).toBe("");
+    expect(out.suggested_block.bullets).toEqual([
+      "主导交易中台前端架构重构，缺陷率下降 42%",
+    ]);
+  });
 });
 
 describe("selectProvider：隐私路由策略（外部模型默认关闭）", () => {

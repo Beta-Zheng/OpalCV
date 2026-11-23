@@ -41,11 +41,20 @@ describe("求职场景规范", () => {
   it.each(["student", "internship"] as const)(
     "%s 示例符合学生身份，检查教育经历",
     (audience) => {
-      for (const kind of ["ai", "frontend", "data"] as const) {
+      for (const kind of [
+        "ai",
+        "frontend",
+        "data",
+        "en_google_ml",
+        "en_apple_ai",
+        "en_msft_agent",
+      ] as const) {
         const resume = testResume();
         resume.audience = audience;
         resume.data = buildSampleResume(kind, audience);
-        expect(resume.data.basic_info.title).not.toMatch(/高级|资深/);
+        expect(resume.data.basic_info.title).not.toMatch(
+          /高级|资深|Staff|Senior|Principal/i
+        );
         const text = JSON.stringify(resume.data.sections);
         expect(text).not.toMatch(/年.*经验|80 万|负责人|组长|核心维护者/);
         expect(
@@ -64,4 +73,20 @@ describe("求职场景规范", () => {
       expect(Object.values(AUDIENCE_LABELS)).toEqual(["校招", "实习", "社招"]);
     }
   );
+
+  it("英文大厂 AI 示例包含完整英文结构与目标公司经历", () => {
+    const cases = [
+      ["en_google_ml", "Google"],
+      ["en_apple_ai", "Apple"],
+      ["en_msft_agent", "Microsoft"],
+    ] as const;
+    for (const [kind, company] of cases) {
+      const data = buildSampleResume(kind, "experienced");
+      const work = data.sections.find((s) => s.type === "work_experience");
+      expect(work?.title).toBe("Experience");
+      expect(work?.blocks[0]?.title).toBe(company);
+      expect(work?.blocks[0]?.bullets.length).toBeGreaterThanOrEqual(3);
+      expect(data.basic_info.phone).toMatch(/^\+1/);
+    }
+  });
 });

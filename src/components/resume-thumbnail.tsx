@@ -2,21 +2,29 @@ import type { Resume } from "../types";
 import { memo } from "react";
 import { A4Sheet } from "./template";
 
-function ResumeThumbnail({ resume }: { resume: Resume }) {
+function ResumeThumbnail({
+  resume,
+  className,
+}: {
+  resume: Resume;
+  className?: string;
+}) {
   return (
     <div
-      className="resume-thumbnail relative h-56 overflow-hidden rounded-t-xl border-b border-line bg-paper-200"
+      className={`resume-thumbnail preview-canvas relative h-56 overflow-hidden rounded-t-xl border-b border-line ${className ?? ""}`}
       aria-hidden="true"
     >
       <div
-        className="pointer-events-none absolute left-1/2 top-4"
+        className="pointer-events-none absolute left-1/2 top-4 transition-transform duration-300 group-hover:-translate-y-0.5"
         style={{
           width: 794,
           transform: "translateX(-50%) scale(0.185)",
           transformOrigin: "top center",
         }}
       >
-        <A4Sheet resume={resume} />
+        <div className="a4-paper-frame overflow-hidden">
+          <A4Sheet resume={resume} />
+        </div>
       </div>
     </div>
   );

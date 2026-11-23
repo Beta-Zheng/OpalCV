@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { structureResume, joinPageItems, detectMultiColumn } from "../parser";
+import { structureResume, detectMultiColumn } from "../parser";
 
 /* 复刻 Home.runParse 里判定「是否有内容」的逻辑，用于在单测里复现 UI 行为。
  * 与修复后的实现保持一致：summary 看 description 是否非空、skills 看 skills 是否非空、

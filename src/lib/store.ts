@@ -36,6 +36,7 @@ import {
   createDocumentStorage,
   indexedDocumentBackend,
 } from "./document-storage";
+import { getUiLang } from "./i18n";
 import { parseJD } from "./jd";
 import { viewHash } from "./navigation";
 import { resumeVersionContent, versionSummary } from "./versions";
@@ -60,6 +61,7 @@ interface PendingExternal {
   sectionId: string;
   blockId: string;
   action: AIAction;
+  providerId: string;
   providerName: string;
   providerHost: string;
   execute: () => void;
@@ -79,6 +81,7 @@ interface AppState {
   view: View;
   toasts: Toast[];
   pendingExternal: PendingExternal | null;
+  trustedExternalIds: string[];
   lastSavedAt: string | null;
   saveStatus: SaveStatus;
 
@@ -89,7 +92,7 @@ interface AppState {
   createResume: (
     data: ResumeData,
     title?: string,
-    options?: Pick<Resume, "locale" | "audience">
+    options?: Pick<Partial<Resume>, "locale" | "audience" | "template_id">
   ) => string;
   deleteResume: (id: string) => void;
   archiveResume: (id: string, archived: boolean) => void;
@@ -122,6 +125,7 @@ interface AppState {
   ) => void;
   queuedSuggestionCount: number;
   renameResume: (id: string, title: string) => void;
+  replaceResumeData: (id: string, data: ResumeData) => void;
   setTemplate: (id: string, templateId: string) => void;
   setTheme: (id: string, patch: Partial<Resume["theme"]>) => void;
   setAvatar: (id: string, url: string | null) => void;
@@ -164,7 +168,7 @@ interface AppState {
     blockId: string,
     action: AIAction
   ) => void;
-  confirmExternal: (proceed: boolean) => void;
+  confirmExternal: (proceed: boolean, trustForSession?: boolean) => void;
   acceptSuggestion: (sugId: string, edited?: Block) => boolean;
   cancelSuggestion: (sugId: string) => void;
   undoSuggestion: (sugId: string) => boolean;
@@ -296,9 +300,15 @@ const buffered = storageFactory<BackupData & { externalCallCount: number }>(
     return { ...data, externalCallCount: count };
   }
 );
-export const flushSave = buffered.flush;
+export const flushSave = () => buffered.flush();
+export const forceSave = () =>
+  "forceSave" in buffered ? buffered.forceSave() : buffered.flush();
+export const reloadFromStorage = async () => {
+  if ("discardPending" in buffered) buffered.discardPending();
+  await useApp.persist.rehydrate();
+  useApp.setState({ saveStatus: "saved" });
+};
 if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", flushSave);
   window.addEventListener("pagehide", () => {
     saveAutomaticVersions();
     void flushSave();
@@ -306,7 +316,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", (event) => {
     saveAutomaticVersions();
     void flushSave();
-    if (["saving", "error"].includes(useApp.getState().saveStatus)) {
+    if (["saving", "error", "conflict"].includes(useApp.getState().saveStatus)) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -317,6 +327,72 @@ if (typeof window !== "undefined") {
       void flushSave();
     }
   });
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const ch = new BroadcastChannel("opalcv-storage");
+          ch.onmessage = (event) => {
+            if (event.data?.type !== "saved") return;
+            const appState = useApp.getState();
+            const st = appState.saveStatus;
+            if (st === "saving" || st === "conflict") {
+              useApp.setState({ saveStatus: "conflict" });
+            } else if (
+              requests.size === 0 &&
+              !appState.suggestions.some((x) => x.status === "generating")
+            ) {
+              // 当前标签页无未保存修改且无正在进行的 AI 请求时，才自动同步最新数据
+              void reloadFromStorage();
+            }
+          };
+        }
+      } catch {
+        /* BroadcastChannel is optional. */
+      }
+}
+
+const STORE_TOAST_EN: Record<string, string> = {
+  "栏目间存在同一条经历，请先手动整理再更新":
+    "Duplicate entries exist across sections; please clean them up before syncing.",
+  "该简历有关联记录，已归档并保留历史":
+    "Resume has linked applications; archived to preserve history.",
+  "已复制简历": "Resume duplicated",
+  "已投递的版本已固定；再次投递请新增记录":
+    "Submitted snapshot is locked; add a new application record for re-applying.",
+  "反馈记录已达上限，请先备份":
+    "Event history limit reached; please export a backup first.",
+  "请等待或取消当前生成，再启动模块优化":
+    "Wait for or cancel the current generation before starting batch polish.",
+  "当前模块没有可优化的非空条目":
+    "No non-empty entries in this section to optimize.",
+  "未检测到可用模型，已使用本地规则引擎生成建议":
+    "No active external model; generated suggestion with local rules.",
+  "模型连接失败，已自动降级为本地规则引擎":
+    "Model connection failed; fell back to local rules engine.",
+  "AI 生成失败，原内容已保留":
+    "AI generation failed; original content preserved.",
+  "模型服务地址无效，请检查配置":
+    "Invalid model endpoint URL; please check model settings.",
+  "已取消外部调用，原内容保持不变":
+    "External AI call cancelled; original content unchanged.",
+  "内容未变化，无需写入；可按检查提示补充真实事实":
+    "Content unchanged; add concrete facts as suggested.",
+  "条目已修改或删除，旧建议未应用；请基于当前内容重新生成":
+    "Entry was modified or removed; regenerate suggestion from current content.",
+  "已应用编辑后的建议": "Applied edited suggestion",
+  "已应用 AI 建议": "Applied AI suggestion",
+  "条目已继续修改，撤销未执行，避免覆盖新内容":
+    "Entry was edited further; undo skipped to avoid overwriting new edits.",
+  "已撤销 AI 建议，恢复接受前的内容":
+    "Undid AI suggestion and restored previous content",
+  "已拒绝建议，原内容保持不变":
+    "Suggestion dismissed; original content unchanged",
+};
+
+function localizeStoreToast(msg: string): string {
+  if (STORE_TOAST_EN[msg]) return STORE_TOAST_EN[msg];
+  const restored = msg.match(/^已恢复 (\d+) 份简历$/);
+  if (restored) return `Restored ${restored[1]} resume(s)`;
+  return msg;
 }
 
 function mapSection(
@@ -352,6 +428,7 @@ export const useApp = create<AppState>()(
       view: { name: "home" },
       toasts: [],
       pendingExternal: null,
+      trustedExternalIds: [],
       lastSavedAt: null,
       saveStatus: "idle",
 
@@ -367,7 +444,11 @@ export const useApp = create<AppState>()(
 
       toast: (kind, msg) => {
         const id = uid("toast");
-        set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, msg }] }));
+        const localized =
+          getUiLang() === "en" ? localizeStoreToast(msg) : msg;
+        set((s) => ({
+          toasts: [...s.toasts.slice(-3), { id, kind, msg: localized }],
+        }));
         setTimeout(() => get().dismissToast(id), 4200);
       },
       dismissToast: (id) =>
@@ -380,7 +461,7 @@ export const useApp = create<AppState>()(
           id,
           title: title || data.basic_info.name || "未命名简历",
           data: { ...data, metadata: { ...data.metadata, created_at: now } },
-          template_id: "modern_single_column",
+          template_id: options?.template_id || "modern_single_column",
           theme: {
             primary_color: "#4F46E5",
             font_size: 14,
@@ -543,6 +624,8 @@ export const useApp = create<AppState>()(
 
       renameResume: (id, title) =>
         set((s) => withResume(s, id, (r) => ({ ...r, title }))),
+      replaceResumeData: (id, data) =>
+        set((s) => withResume(s, id, (r) => ({ ...r, data: structuredClone(data) }))),
       setResumeOptions: (id, patch) =>
         set((s) => withResume(s, id, (r) => ({ ...r, ...patch }))),
       createJobVersion: (id, company, role, jdText) => {
@@ -599,14 +682,15 @@ export const useApp = create<AppState>()(
         };
         set((s) => {
           const linked = new Set(s.applications.map((a) => a.snapshot_id));
-          let recent = 0;
+          let recentAuto = 0;
           return {
             snapshots: [snapshot, ...s.snapshots].filter(
               (x) =>
                 x.resume_id !== id ||
                 x.kind === "initial" ||
+                x.kind === "manual" ||
                 linked.has(x.id) ||
-                ++recent <= 20
+                ++recentAuto <= 20
             ),
           };
         });
@@ -621,7 +705,7 @@ export const useApp = create<AppState>()(
           return false;
         suggestionQueue = [];
         queueEpoch++;
-        get().captureSnapshot(snapshot.resume_id, "恢复前自动保存");
+        get().captureSnapshot(snapshot.resume_id, "恢复前自动保存", "auto");
         const copy = structuredClone(snapshot.resume);
         copy.archived_at = get().resumes.find(
           (r) => r.id === copy.id
@@ -641,7 +725,9 @@ export const useApp = create<AppState>()(
           jds,
           pendingExternal: null,
           queuedSuggestionCount: 0,
-          suggestions: s.suggestions.filter((s) => s.resume_id !== copy.id),
+          suggestions: s.suggestions.filter(
+            (x) => !(x.resume_id === copy.id && x.status === "generating")
+          ),
         }));
         return true;
       },
@@ -1041,61 +1127,68 @@ export const useApp = create<AppState>()(
           )
             .then((out) => {
               if (controller.signal.aborted) return;
+              const updatedItem = {
+                ...base,
+                status: "success" as const,
+                suggested: out.suggested_block,
+                explanation: out.explanation,
+                warnings: out.warnings,
+                matched_keywords: out.matched_keywords,
+              };
               set((s) => ({
-                suggestions: s.suggestions.map((x) =>
-                  x.id === base.id
-                    ? {
-                        ...x,
-                        status: "success",
-                        suggested: out.suggested_block,
-                        explanation: out.explanation,
-                        warnings: out.warnings,
-                        matched_keywords: out.matched_keywords,
-                      }
-                    : x
-                ),
+                suggestions: s.suggestions.some((x) => x.id === base.id)
+                  ? s.suggestions.map((x) => (x.id === base.id ? updatedItem : x))
+                  : [updatedItem, ...s.suggestions],
               }));
             })
             .catch((e) => {
               if (controller.signal.aborted) return;
               const msg = e instanceof Error ? e.message : "生成失败";
+              const isAbortTimeout =
+                (e instanceof DOMException && e.name === "AbortError") ||
+                /aborted|timeout/i.test(msg);
               const isConn =
                 e instanceof TypeError ||
-                /failed to fetch|aborted|networkerror|load failed/i.test(msg);
-              if (isConn) {
+                /failed to fetch|networkerror|load failed/i.test(msg);
+              if (isConn && !isAbortTimeout) {
                 // 模型服务不可达 → 自动降级为本地规则引擎（失败可降级）
                 const out = ruleSuggestion(
                   action,
                   block,
                   jd?.structured.keywords ?? []
                 );
+                const fallbackItem = {
+                  ...base,
+                  status: "success" as const,
+                  engine: "rules" as const,
+                  provider_name: "本地规则引擎（自动降级）",
+                  suggested: out.suggested_block,
+                  explanation: out.explanation,
+                  matched_keywords: out.matched_keywords,
+                  warnings: [
+                    `无法连接模型服务（${provider.base_url}），已自动降级为本地规则引擎；可在「模型与隐私」中测试连接或开启外部模型`,
+                    ...out.warnings,
+                  ],
+                };
                 set((s) => ({
-                  suggestions: s.suggestions.map((x) =>
-                    x.id === base.id
-                      ? {
-                          ...x,
-                          status: "success",
-                          engine: "rules",
-                          provider_name: "本地规则引擎（自动降级）",
-                          suggested: out.suggested_block,
-                          explanation: out.explanation,
-                          matched_keywords: out.matched_keywords,
-                          warnings: [
-                            `无法连接模型服务（${provider.base_url}），已自动降级为本地规则引擎；可在「模型与隐私」中测试连接或开启外部模型`,
-                            ...out.warnings,
-                          ],
-                        }
-                      : x
-                  ),
+                  suggestions: s.suggestions.some((x) => x.id === base.id)
+                    ? s.suggestions.map((x) => (x.id === base.id ? fallbackItem : x))
+                    : [fallbackItem, ...s.suggestions],
                 }));
                 get().toast("warn", "模型连接失败，已自动降级为本地规则引擎");
               } else {
+                const errText = isAbortTimeout
+                  ? `模型响应超时（推理耗时较长，可在「模型与隐私 → 编辑模型 → 高级参数」中调大超时时间或加大 Max Tokens）`
+                  : msg;
+                const failedItem = {
+                  ...base,
+                  status: "failed" as const,
+                  error: errText,
+                };
                 set((s) => ({
-                  suggestions: s.suggestions.map((x) =>
-                    x.id === base.id
-                      ? { ...x, status: "failed", error: msg }
-                      : x
-                  ),
+                  suggestions: s.suggestions.some((x) => x.id === base.id)
+                    ? s.suggestions.map((x) => (x.id === base.id ? failedItem : x))
+                    : [failedItem, ...s.suggestions],
                 }));
                 get().toast("err", "AI 生成失败，原内容已保留");
               }
@@ -1106,6 +1199,10 @@ export const useApp = create<AppState>()(
             });
         };
         if (sel.kind === "confirm_external") {
+          if (get().trustedExternalIds.includes(sel.provider.id)) {
+            execute();
+            return;
+          }
           let providerHost: string;
           try {
             providerHost = new URL(sel.provider.base_url).host;
@@ -1122,6 +1219,7 @@ export const useApp = create<AppState>()(
               sectionId,
               blockId,
               action,
+              providerId: sel.provider.id,
               providerName: sel.provider.name,
               providerHost,
               execute: () => {
@@ -1156,9 +1254,15 @@ export const useApp = create<AppState>()(
         execute();
       },
 
-      confirmExternal: (proceed) => {
+      confirmExternal: (proceed, trustForSession = false) => {
         const pending = get().pendingExternal;
-        set({ pendingExternal: null });
+        set((s) => ({
+          pendingExternal: null,
+          trustedExternalIds:
+            proceed && trustForSession && pending
+              ? Array.from(new Set([...s.trustedExternalIds, pending.providerId]))
+              : s.trustedExternalIds,
+        }));
         if (!pending) return;
         if (proceed) {
           pending.execute();
@@ -1197,10 +1301,19 @@ export const useApp = create<AppState>()(
           return false;
         }
         const content = edited ?? sug.suggested;
+        const patch = blockPatch(content);
+        const nextBulletMarks =
+          current.bullet_marks && Array.isArray(patch.bullets)
+            ? patch.bullets.length === current.bullet_marks.length
+              ? [...current.bullet_marks]
+              : current.bullet_marks.some((m) => m === false)
+                ? patch.bullets.map((_, i) => current.bullet_marks?.[i] ?? true)
+                : undefined
+            : undefined;
         const applied = {
           ...current,
-          ...blockPatch(content),
-          bullet_marks: undefined,
+          ...patch,
+          bullet_marks: nextBulletMarks,
         };
         set((s) => ({
           ...withResume(s, sug.resume_id, (r) =>
@@ -1301,18 +1414,32 @@ export const useApp = create<AppState>()(
             models: exists
               ? s.models.map((x) => (x.id === m.id ? m : x))
               : [...s.models, m],
+            trustedExternalIds: s.trustedExternalIds.filter((id) => id !== m.id),
           };
         }),
       deleteModel: (id) =>
-        set((s) => ({ models: s.models.filter((m) => m.id !== id) })),
+        set((s) => ({
+          models: s.models.filter((m) => m.id !== id),
+          trustedExternalIds: s.trustedExternalIds.filter((x) => x !== id),
+        })),
       toggleModel: (id) =>
         set((s) => ({
           models: s.models.map((m) =>
             m.id === id ? { ...m, enabled: !m.enabled } : m
           ),
+          trustedExternalIds: s.trustedExternalIds.filter((x) => x !== id),
         })),
       setPrivacy: (patch) =>
-        set((s) => ({ privacy: { ...s.privacy, ...patch } })),
+        set((s) => {
+          const next = { ...s.privacy, ...patch };
+          return {
+            privacy: next,
+            trustedExternalIds:
+              !next.allowExternal || next.route === "local_only"
+                ? []
+                : s.trustedExternalIds,
+          };
+        }),
 
       importData: (raw, mode = "replace") => {
         try {
@@ -1399,6 +1526,7 @@ export const useApp = create<AppState>()(
                 ),
               },
               pendingExternal: null,
+      trustedExternalIds: [],
               queuedSuggestionCount: 0,
             }));
           } else
@@ -1408,6 +1536,7 @@ export const useApp = create<AppState>()(
               applications: data.applications ?? [],
               coverLetters: data.coverLetters ?? {},
               pendingExternal: null,
+      trustedExternalIds: [],
               queuedSuggestionCount: 0,
               view: { name: "home" },
             });
@@ -1438,6 +1567,7 @@ export const useApp = create<AppState>()(
           view: { name: "home" },
           lastSavedAt: null,
           pendingExternal: null,
+      trustedExternalIds: [],
         });
         flushSave();
       },

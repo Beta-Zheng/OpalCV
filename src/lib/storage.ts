@@ -1,6 +1,6 @@
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 
-export type SaveStatus = "idle" | "saving" | "saved" | "error";
+export type SaveStatus = "idle" | "saving" | "saved" | "conflict" | "error";
 
 /** Debounce serialization and synchronous localStorage writes; retain pending data on failure. */
 export function createBufferedStorage<T extends object>(

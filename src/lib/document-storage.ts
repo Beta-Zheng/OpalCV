@@ -7,33 +7,56 @@ export interface PackedDocument {
   records: Map<string, unknown>;
   assets: Map<string, string>;
 }
+export class StorageConflictError extends Error {
+  constructor() {
+    super("Storage revision conflict");
+    this.name = "StorageConflictError";
+  }
+}
+
 export interface DocumentBackend {
   read(name: string): Promise<PackedDocument | null>;
-  write(name: string, document: PackedDocument): Promise<void>;
+  write(
+    name: string,
+    document: PackedDocument,
+    options?: { force?: boolean }
+  ): Promise<void>;
   remove(name: string): Promise<void>;
 }
+
+type CachedSubtree = {
+  id: string;
+  records: Array<[string, unknown]>;
+  assets: Array<[string, string]>;
+};
+const subtreeCache = new WeakMap<object, CachedSubtree>();
+const stringHashCache = new Map<string, string>();
 
 /** Content addressing shares unchanged entries, images and source text across versions. */
 export async function packDocument(value: unknown): Promise<PackedDocument> {
   const records = new Map<string, unknown>();
   const assets = new Map<string, string>();
-  const hashes = new Map<string, string>();
+  if (stringHashCache.size > 1024) stringHashCache.clear();
   const hash = async (s: string) => {
-    if (!hashes.has(s)) {
+    let cached = stringHashCache.get(s);
+    if (!cached) {
       const bytes = await crypto.subtle.digest(
         "SHA-256",
         new TextEncoder().encode(s)
       );
-      hashes.set(
-        s,
-        Array.from(new Uint8Array(bytes), (b) =>
-          b.toString(16).padStart(2, "0")
-        ).join("")
-      );
+      cached = Array.from(new Uint8Array(bytes), (b) =>
+        b.toString(16).padStart(2, "0")
+      ).join("");
+      stringHashCache.set(s, cached);
     }
-    return hashes.get(s)!;
+    return cached;
   };
-  const encode = async (v: unknown, key = ""): Promise<unknown> => {
+  const encode = async (
+    v: unknown,
+    key = "",
+    scopedRecords?: Array<[string, unknown]>,
+    scopedAssets?: Array<[string, string]>
+  ): Promise<unknown> => {
     if (
       typeof v === "string" &&
       v &&
@@ -41,13 +64,43 @@ export async function packDocument(value: unknown): Promise<PackedDocument> {
     ) {
       const id = `asset:${await hash(v)}`;
       assets.set(id, v);
+      scopedAssets?.push([id, v]);
       return { $documentRef: id };
     }
-    if (Array.isArray(v)) return Promise.all(v.map((x) => encode(x, key)));
+    if (Array.isArray(v))
+      return Promise.all(
+        v.map((x) => encode(x, key, scopedRecords, scopedAssets))
+      );
     if (v && typeof v === "object") {
+      const isRecordCandidate =
+        "block_id" in v || "sections" in v || key === "basic_info";
+      if (isRecordCandidate) {
+        const hit = subtreeCache.get(v);
+        if (hit) {
+          for (const [rk, rv] of hit.records) {
+            records.set(rk, rv);
+            scopedRecords?.push([rk, rv]);
+          }
+          for (const [ak, av] of hit.assets) {
+            assets.set(ak, av);
+            scopedAssets?.push([ak, av]);
+          }
+          return { $documentRef: hit.id };
+        }
+      }
+      const localRecords: Array<[string, unknown]> = [];
+      const localAssets: Array<[string, string]> = [];
       const result = Object.fromEntries(
         await Promise.all(
-          Object.entries(v).map(async ([k, x]) => [k, await encode(x, k)])
+          Object.entries(v).map(async ([k, x]) => [
+            k,
+            await encode(
+              x,
+              k,
+              isRecordCandidate ? localRecords : scopedRecords,
+              isRecordCandidate ? localAssets : scopedAssets
+            ),
+          ])
         )
       );
       // Basic info, entries and full data become shared records, rather than copies per snapshot.
@@ -58,6 +111,14 @@ export async function packDocument(value: unknown): Promise<PackedDocument> {
       ) {
         const id = `record:${await hash(JSON.stringify(result))}`;
         records.set(id, result);
+        localRecords.push([id, result]);
+        subtreeCache.set(v, {
+          id,
+          records: localRecords,
+          assets: localAssets,
+        });
+        for (const entry of localRecords) scopedRecords?.push(entry);
+        for (const entry of localAssets) scopedAssets?.push(entry);
         return { $documentRef: id };
       }
       return result;
@@ -111,7 +172,7 @@ const transactionDone = (tx: IDBTransaction) =>
 export function indexedDocumentBackend(): DocumentBackend {
   let revision = 0;
   const database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("touchstonecv", 1);
+    const request = indexedDB.open("opalcv", 1);
     request.onupgradeneeded = () => {
       for (const name of ["manifest", "records", "assets"])
         request.result.createObjectStore(name);
@@ -152,18 +213,32 @@ export function indexedDocumentBackend(): DocumentBackend {
             ),
           };
     },
-    async write(name, document) {
+    async write(name, document, options) {
       const db = await database;
       const tx = db.transaction(["manifest", "records", "assets"], "readwrite");
-      const done = transactionDone(tx);
+      let conflicted = false;
+      let writtenRevision = revision + 1;
+      const done = new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onabort = () =>
+          reject(
+            conflicted
+              ? new StorageConflictError()
+              : (tx.error ?? new Error("Storage transaction aborted"))
+          );
+        tx.onerror = () => reject(tx.error);
+      });
       const expected = revision;
       const head = tx.objectStore("manifest").get(name);
       head.onsuccess = () => {
+        const remoteRevision = head.result?.revision ?? 0;
         // Detect edits in another tab instead of silently overwriting them.
-        if ((head.result?.revision ?? 0) !== expected) {
+        if (!options?.force && remoteRevision !== expected) {
+          conflicted = true;
           tx.abort();
           return;
         }
+        writtenRevision = Math.max(expected, remoteRevision) + 1;
         // Issue mutations inside IDB callbacks to keep the transaction alive in every browser.
         for (const storeName of ["records", "assets"] as const) {
           const store = tx.objectStore(storeName);
@@ -177,12 +252,21 @@ export function indexedDocumentBackend(): DocumentBackend {
           };
         }
         tx.objectStore("manifest").put(
-          { revision: expected + 1, body: document.manifest },
+          { revision: writtenRevision, body: document.manifest },
           name
         );
       };
       await done;
-      revision = expected + 1;
+      revision = writtenRevision;
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const ch = new BroadcastChannel("opalcv-storage");
+          ch.postMessage({ type: "saved", name, revision: writtenRevision });
+          ch.close();
+        }
+      } catch {
+        /* BroadcastChannel is optional. */
+      }
     },
     async remove(name) {
       const db = await database;
@@ -210,10 +294,10 @@ export function createDocumentStorage<T extends object>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let blocked = false;
   let working: Promise<void> | null = null;
-  const flush = (): Promise<void> => {
+  const flush = (options?: { force?: boolean }): Promise<void> => {
     clearTimeout(timer);
     timer = undefined;
-    if (working) return working.then(() => (pending ? flush() : undefined));
+    if (working) return working.then(() => (pending ? flush(options) : undefined));
     if (!pending) return Promise.resolve();
     if (blocked) {
       onStatus("error");
@@ -223,7 +307,7 @@ export function createDocumentStorage<T extends object>(
     pending = null;
     working = (async () => {
       try {
-        await backend.write(current.name, await packDocument(current.value));
+        await backend.write(current.name, await packDocument(current.value), options);
         // Delete legacy only after the new transaction has committed.
         try {
           legacy().removeItem(current.name);
@@ -231,9 +315,9 @@ export function createDocumentStorage<T extends object>(
           /* IDB remains authoritative. */
         }
         onStatus(pending ? "saving" : "saved");
-      } catch {
+      } catch (err) {
         if (!pending) pending = current;
-        onStatus("error");
+        onStatus(err instanceof StorageConflictError ? "conflict" : "error");
       } finally {
         working = null;
       }
@@ -305,6 +389,12 @@ export function createDocumentStorage<T extends object>(
   return {
     storage,
     flush,
+    forceSave: () => flush({ force: true }),
+    discardPending: () => {
+      clearTimeout(timer);
+      timer = undefined;
+      pending = null;
+    },
     allowRecovery: () => {
       blocked = false;
     },

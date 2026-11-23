@@ -13,6 +13,7 @@ import type {
   RouteStrategy,
 } from "./ai-types";
 import { ACTION_LABELS } from "../types";
+import { isEncryptedPayload, resolveApiKey } from "./crypto";
 import { containsTerm, stripHtml, hasAchievementMetric } from "./utils";
 
 export interface AISuggestionOutput {
@@ -24,18 +25,18 @@ export interface AISuggestionOutput {
 
 /* ---------------- 系统 Prompt（§14.1，禁止编造） ---------------- */
 
-const SYSTEM_PROMPT = `你是一名专业简历优化顾问。
+const SYSTEM_PROMPT = `/no_think
+你是一名专业简历优化顾问。
 
 要求：
-1. 只能基于用户提供的内容进行优化。
-2. 不得编造不存在的项目、公司、技能、职位、数据指标。
-3. 如果用户没有提供数字，不要编造数字。
-4. 如果需要量化结果，只能给出"建议补充"的提示，放在 warnings 数组。
-5. 输出必须为合法 JSON。
-6. 不要输出 Markdown 代码块。
-7. 不要输出额外解释。
-8. 保持语言简洁、专业、结果导向。
-9. 保留职责强度，不得把参与或协助改成主导。保留日期、专名及估算限定词。`;
+1. 只能基于【当前模块（JSON）】本身已有的内容进行优化，严禁把其他经历或个人总结中的数字、指标嫁接到当前模块。
+2. 不得编造不存在的项目、公司、技能、职位、数据指标；如果当前模块某条要点没有提供数字，严禁添加任何数字。
+3. 字段结构守恒：若当前模块的 description 为空字符串 "" 且 bullets 非空，输出中 description 必须保持为 ""（严禁把 bullets 缩写成一段综述塞进 description）；同理，若 bullets 为空数组 [] 且 description 非空，bullets 必须保持为 []。
+4. 要点条数守恒：当 bullets 非空时，suggested_block.bullets 的条数与顺序必须与原 bullets 一一对应，以便逐条对比。
+5. 如果需要量化结果，只能给出"建议补充"的提示，放在 warnings 数组。
+6. explanation 必须具体说明本次改动的重点（例如：强化了架构重构动词、提炼了背景-方案-结果结构、精简了冗余修饰语），不要只写"已完成内容优化"。
+7. 输出必须为合法 JSON，不要输出 Markdown 代码块，不要长篇思考过程，直接输出 JSON 结果。
+8. 保留职责强度，不得把参与或协助改成主导。保留日期、专名及估算限定词。`;
 
 const ACTION_INSTRUCTION: Record<AIAction, string> = {
   polish:
@@ -64,6 +65,28 @@ export class ProviderError extends Error {
   }
 }
 
+export interface ChatStreamOptions {
+  signal?: AbortSignal;
+  stream?: boolean;
+  onChunk?: (chunk: string, accumulated: string) => void;
+  onProgress?: (accumulated: string) => void;
+}
+
+function normalizeChatOptions(
+  signalOrOptions?: AbortSignal | ChatStreamOptions
+): ChatStreamOptions {
+  if (!signalOrOptions) return {};
+  if ("aborted" in signalOrOptions) {
+    return { signal: signalOrOptions };
+  }
+  return signalOrOptions;
+}
+
+function shouldStream(options: ChatStreamOptions): boolean {
+  if (options.stream === false) return false;
+  return Boolean(options.stream || options.onChunk || options.onProgress);
+}
+
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -85,97 +108,469 @@ async function fetchWithTimeout(
   }
 }
 
-async function chatOllama(
+async function readStreamWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  extractDelta: (line: string) => string,
+  extractFallbackJson: (data: any) => string,
+  options: ChatStreamOptions
+): Promise<string> {
+  const ctrl = new AbortController();
+  const abort = () => ctrl.abort();
+  if (init.signal?.aborted) ctrl.abort();
+  init.signal?.addEventListener("abort", abort, { once: true });
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const onAbort = () => {
+    reader?.cancel(new DOMException("timeout", "AbortError")).catch(() => {});
+  };
+  ctrl.signal.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    if (!res.ok) throw new ProviderError(res.status);
+
+    const contentType = res.headers?.get?.("content-type") ?? "";
+    if (!res.body || contentType.includes("application/json")) {
+      const data = await res.json();
+      const text = extractFallbackJson(data);
+      if (text) {
+        options.onChunk?.(text, text);
+        options.onProgress?.(text);
+      }
+      return text;
+    }
+
+    reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let accumulated = "";
+
+    const emitLine = (rawLine: string) => {
+      const line = rawLine.trim();
+      if (!line) return;
+      const delta = extractDelta(line);
+      if (!delta) return;
+      accumulated += delta;
+      options.onChunk?.(delta, accumulated);
+      options.onProgress?.(accumulated);
+    };
+
+    while (true) {
+      if (ctrl.signal.aborted) {
+        throw new DOMException("timeout", "AbortError");
+      }
+      const { value, done } = await reader.read();
+      if (ctrl.signal.aborted) {
+        throw new DOMException("timeout", "AbortError");
+      }
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        emitLine(line);
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      emitLine(buffer);
+    }
+    return accumulated;
+  } finally {
+    clearTimeout(t);
+    ctrl.signal.removeEventListener("abort", onAbort);
+    init.signal?.removeEventListener("abort", abort);
+  }
+}
+
+function parseOllamaStreamLine(line: string): string {
+  try {
+    const parsed = JSON.parse(line);
+    return parsed?.message?.content ?? parsed?.response ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function parseOpenAIStreamLine(line: string): string {
+  if (!line.startsWith("data:")) return "";
+  const payload = line.slice(5).trim();
+  if (!payload || payload === "[DONE]") return "";
+  try {
+    const parsed = JSON.parse(payload);
+    return (
+      parsed?.choices?.[0]?.delta?.content ??
+      parsed?.choices?.[0]?.message?.content ??
+      ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+export function normalizeProviderBaseUrl(
+  rawUrl: string | undefined,
+  protocol: "ollama" | "openai_compatible"
+): string {
+  const fallback =
+    protocol === "ollama"
+      ? "http://localhost:11434"
+      : "https://api.openai.com/v1";
+  let base = (rawUrl || fallback).trim().replace(/\/+$/, "");
+  if (protocol === "ollama") {
+    base = base.replace(/\/api(?:\/(?:chat|tags|generate))?$/i, "");
+    return base || fallback;
+  }
+  // Common user copy-paste suffixes: full endpoint paths
+  base = base
+    .replace(/\/chat\/completions$/i, "")
+    .replace(/\/completions$/i, "")
+    .replace(/\/models$/i, "");
+  // LM Studio native REST root (/api/v1 or /api/v0) -> OpenAI compatible /v1
+  if (
+    /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?\/api\/v[01]$/i.test(
+      base
+    )
+  ) {
+    base = base.replace(/\/api\/v[01]$/i, "/v1");
+  }
+  // Bare localhost:port for OpenAI-compatible local servers (LM Studio :1234, vLLM :8000, llama.cpp :8080) -> append /v1
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(base)) {
+    base = `${base}/v1`;
+  }
+  return base || fallback;
+}
+
+export async function chatOllama(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<string> {
-  const base = (p.base_url || "http://localhost:11434").replace(/\/$/, "");
-  const res = await fetchWithTimeout(
-    `${base}/api/chat`,
-    {
-      method: "POST",
-      signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: p.model_name,
-        messages,
-        stream: false,
-        format: "json",
-        options: { temperature: p.temperature },
-      }),
-    },
-    p.timeout_ms
-  );
+  const options = normalizeChatOptions(signalOrOptions);
+  const stream = shouldStream(options);
+  const base = normalizeProviderBaseUrl(p.base_url, "ollama");
+  const init: RequestInit = {
+    method: "POST",
+    signal: options.signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: p.model_name,
+      messages,
+      stream,
+      format: "json",
+      options: { temperature: p.temperature },
+    }),
+  };
+
+  if (stream) {
+    return readStreamWithTimeout(
+      `${base}/api/chat`,
+      init,
+      p.timeout_ms,
+      parseOllamaStreamLine,
+      (res) => res?.message?.content ?? "",
+      options
+    );
+  }
+
+  const res = await fetchWithTimeout(`${base}/api/chat`, init, p.timeout_ms);
   return res?.message?.content ?? "";
 }
 
-async function chatOpenAI(
+const AI_SUGGESTION_JSON_SCHEMA = {
+  type: "json_schema",
+  json_schema: {
+    name: "resume_suggestion",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        suggested_block: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            subtitle: { type: "string" },
+            start_date: { type: "string" },
+            end_date: { type: "string" },
+            location: { type: "string" },
+            description: { type: "string" },
+            bullets: { type: "array", items: { type: "string" } },
+            skills: { type: "array", items: { type: "string" } },
+          },
+          required: ["title", "subtitle", "description", "bullets", "skills"],
+          additionalProperties: true,
+        },
+        explanation: { type: "string" },
+        matched_keywords: { type: "array", items: { type: "string" } },
+        warnings: { type: "array", items: { type: "string" } },
+      },
+      required: [
+        "suggested_block",
+        "explanation",
+        "matched_keywords",
+        "warnings",
+      ],
+      additionalProperties: true,
+    },
+  },
+};
+
+export async function chatOpenAI(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<string> {
-  const base = (p.base_url || "https://api.openai.com/v1").replace(/\/$/, "");
-  const res = await fetchWithTimeout(
-    `${base}/chat/completions`,
-    {
+  const options = normalizeChatOptions(signalOrOptions);
+  const stream = shouldStream(options);
+  const base = normalizeProviderBaseUrl(p.base_url, "openai_compatible");
+  const apiKey = isEncryptedPayload(p.api_key)
+    ? await resolveApiKey(p.api_key)
+    : p.api_key || "";
+  if (options.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+
+  const isLocalHost =
+    p.type === "local" ||
+    /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i.test(base);
+
+  const makeInit = (
+    formatMode: "json_object" | "json_schema" | "none"
+  ): RequestInit => {
+    // Local reasoning models (e.g. Qwen3.5 / DeepSeek-R1) easily consume 1000-2000 tokens in
+    // thinking before emitting the JSON body. Bump default 2048 to 4096 for local servers.
+    const effectiveMaxTokens =
+      isLocalHost && (!p.max_tokens || p.max_tokens <= 2048)
+        ? 4096
+        : p.max_tokens;
+    const body: Record<string, unknown> = {
+      model: p.model_name,
+      messages,
+      temperature: p.temperature,
+      max_tokens: effectiveMaxTokens,
+      ...(formatMode === "json_object"
+        ? { response_format: { type: "json_object" } }
+        : formatMode === "json_schema"
+          ? { response_format: AI_SUGGESTION_JSON_SCHEMA }
+          : {}),
+      ...(stream ? { stream: true } : {}),
+    };
+    return {
       method: "POST",
-      signal,
+      signal: options.signal,
       headers: {
         "Content-Type": "application/json",
-        ...(p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {}),
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
-      body: JSON.stringify({
-        model: p.model_name,
-        messages,
-        temperature: p.temperature,
-        max_tokens: p.max_tokens,
-        response_format: { type: "json_object" },
-      }),
-    },
-    p.timeout_ms
-  );
-  return res?.choices?.[0]?.message?.content ?? "";
+      body: JSON.stringify(body),
+    };
+  };
+
+  const extractMessageText = (msg: any): string => {
+    if (!msg) return "";
+    if (typeof msg.content === "string" && msg.content.trim()) {
+      return msg.content;
+    }
+    if (
+      typeof msg.reasoning_content === "string" &&
+      msg.reasoning_content.trim()
+    ) {
+      return msg.reasoning_content;
+    }
+    return "";
+  };
+
+  const runRequest = async (
+    formatMode: "json_object" | "json_schema" | "none",
+    timeoutMs: number
+  ): Promise<string> => {
+    const init = makeInit(formatMode);
+    if (stream) {
+      return readStreamWithTimeout(
+        `${base}/chat/completions`,
+        init,
+        timeoutMs,
+        parseOpenAIStreamLine,
+        (res) => extractMessageText(res?.choices?.[0]?.message),
+        options
+      );
+    }
+    const res = await fetchWithTimeout(
+      `${base}/chat/completions`,
+      init,
+      timeoutMs
+    );
+    return extractMessageText(res?.choices?.[0]?.message);
+  };
+
+  const effectiveTimeoutMs =
+    isLocalHost && p.timeout_ms === 30000 ? 120000 : p.timeout_ms;
+
+  try {
+    return await runRequest("json_object", effectiveTimeoutMs);
+  } catch (e) {
+    // LM Studio rejects {"type":"json_object"} with HTTP 400 ("response_format.type must be json_schema or text"),
+    // so try "json_schema" first (enforces valid JSON grammar in LM Studio), then fall back to "none".
+    if (e instanceof ProviderError && (e.status === 400 || e.status === 422)) {
+      try {
+        return await runRequest("json_schema", effectiveTimeoutMs);
+      } catch (e2) {
+        if (
+          e2 instanceof ProviderError &&
+          (e2.status === 400 || e2.status === 422)
+        ) {
+          return await runRequest("none", effectiveTimeoutMs);
+        }
+        throw e2;
+      }
+    }
+    throw e;
+  }
 }
 
 export function chat(
   p: ModelProvider,
   messages: Array<{ role: string; content: string }>,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<string> {
   return p.protocol === "ollama"
-    ? chatOllama(p, messages, signal)
-    : chatOpenAI(p, messages, signal);
+    ? chatOllama(p, messages, signalOrOptions)
+    : chatOpenAI(p, messages, signalOrOptions);
 }
 
 /* ---------------- 输出校验（§15.1） ---------------- */
+
+/** 从混有思考过程、说明文字或轻微格式瑕疵的模型文本中提取合法的 JSON 对象 */
+function extractJsonObjectFromText(text: string): Record<string, unknown> {
+  const tryParseCandidate = (candidate: string): Record<string, unknown> | null => {
+    const attempts = [
+      candidate,
+      // 1. 移除对象/数组末尾多余逗号 (trailing commas) + 替换全角スマート引号
+      candidate
+        .replace(/,\s*([}\]])/g, "$1")
+        .replace(/[\u201C\u201D]/g, '"'),
+      // 2. 转义字符串内部裸露的换行符
+      candidate
+        .replace(/,\s*([}\]])/g, "$1")
+        .replace(/"((?:[^"\\]|\\.)*)"/g, (m) =>
+          m.replace(/\r?\n/g, "\\n").replace(/\t/g, "\\t")
+        ),
+    ];
+    for (const str of attempts) {
+      try {
+        const obj = JSON.parse(str);
+        if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+          return obj as Record<string, unknown>;
+        }
+      } catch {
+        // try next repair
+      }
+    }
+    return null;
+  };
+
+  // A. 先按成对大括号扫描所有完整的 {...} 块（从后往前优先，因为思考过程在前面、最终 JSON 在末尾）
+  const balancedSlices: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else {
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            balancedSlices.push(text.slice(i, j + 1));
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 优先匹配包含 suggested_block 或 bullets 的 JSON 对象
+  for (let k = balancedSlices.length - 1; k >= 0; k--) {
+    const slice = balancedSlices[k];
+    if (!slice.includes("suggested_block") && !slice.includes("bullets") && !slice.includes("explanation")) {
+      continue;
+    }
+    const parsed = tryParseCandidate(slice);
+    if (parsed) return parsed;
+  }
+  for (let k = balancedSlices.length - 1; k >= 0; k--) {
+    const parsed = tryParseCandidate(balancedSlices[k]);
+    if (parsed) return parsed;
+  }
+
+  // B. 兜底首尾大括号切片
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("模型未返回 JSON 对象（可能思考耗时过长导致输出被截断，请调大 Max Tokens）");
+  }
+  const fallback = tryParseCandidate(text.slice(start, end + 1));
+  if (fallback) return fallback;
+  throw new Error("JSON 解析失败：模型输出不是合法 JSON");
+}
 
 export function parseAIOutput(
   raw: string,
   original: Block
 ): AISuggestionOutput {
   const cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/^[\s\S]*?<\/think>/i, "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("模型未返回 JSON 对象");
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(cleaned.slice(start, end + 1));
-  } catch {
-    throw new Error("JSON 解析失败：模型输出不是合法 JSON");
+  if (!cleaned.includes("{")) {
+    throw new Error("模型未返回 JSON 对象");
   }
-  if (
-    typeof parsed.suggested_block !== "object" ||
-    parsed.suggested_block === null ||
-    Array.isArray(parsed.suggested_block)
-  )
+  const parsed = extractJsonObjectFromText(cleaned);
+  // 兼容部分本地小模型直接返回 Block 字段（漏包外层 suggested_block）
+  const hasDirectBlockFields =
+    typeof parsed.suggested_block !== "object" &&
+    (Array.isArray(parsed.bullets) ||
+      typeof parsed.description === "string" ||
+      typeof parsed.title === "string");
+  const rawSb = hasDirectBlockFields ? parsed : parsed.suggested_block;
+  if (typeof rawSb !== "object" || rawSb === null || Array.isArray(rawSb))
     throw new Error("缺少 suggested_block 字段");
-  if (typeof parsed.explanation !== "string")
-    throw new Error("缺少 explanation 字段");
-  const sb = parsed.suggested_block as Partial<Block>;
+  const explanationText =
+    typeof parsed.explanation === "string"
+      ? parsed.explanation
+      : hasDirectBlockFields
+        ? "已完成内容优化"
+        : null;
+  if (explanationText === null) throw new Error("缺少 explanation 字段");
+  const sb = rawSb as Partial<Block>;
+  const origHasBullets = original.bullets.some((b) => b.trim().length > 0);
+  const origHasDesc = original.description.trim().length > 0;
+  const parsedBullets = Array.isArray(sb.bullets)
+    ? sb.bullets.filter((x): x is string => typeof x === "string")
+    : original.bullets;
+  // 字段结构守恒：原本只有 bullets 没有 description 时，禁止模型额外塞入一段冗余综述
+  const nextDescription =
+    !origHasDesc && origHasBullets
+      ? ""
+      : typeof sb.description === "string"
+        ? sb.description
+        : original.description;
+  const nextBullets =
+    !origHasBullets && origHasDesc ? [] : parsedBullets;
+
   const merged: Block = {
     ...original,
     title: typeof sb.title === "string" ? sb.title : original.title,
@@ -184,20 +579,15 @@ export function parseAIOutput(
       typeof sb.start_date === "string" ? sb.start_date : original.start_date,
     end_date: typeof sb.end_date === "string" ? sb.end_date : original.end_date,
     location: typeof sb.location === "string" ? sb.location : original.location,
-    description:
-      typeof sb.description === "string"
-        ? sb.description
-        : original.description,
-    bullets: Array.isArray(sb.bullets)
-      ? sb.bullets.filter((x): x is string => typeof x === "string")
-      : original.bullets,
+    description: nextDescription,
+    bullets: nextBullets,
     skills: Array.isArray(sb.skills)
       ? sb.skills.filter((x): x is string => typeof x === "string")
       : original.skills,
   };
   return {
     suggested_block: merged,
-    explanation: parsed.explanation,
+    explanation: explanationText,
     matched_keywords: Array.isArray(parsed.matched_keywords)
       ? parsed.matched_keywords.filter(
           (x): x is string => typeof x === "string"
@@ -241,17 +631,30 @@ export async function generateWithLLM(
   block: Block,
   resumeSummary: string,
   jdJson: string | null,
-  signal?: AbortSignal
+  signalOrOptions?: AbortSignal | ChatStreamOptions
 ): Promise<AISuggestionOutput> {
+  // 仅提取第一行「目标职位：...」，不传入其他工作/项目的具体数字指标，彻底杜绝跨条目数据嫁接
+  const targetRoleLine =
+    (resumeSummary || "").split(/\r?\n/)[0]?.trim() || "目标职位：未填写";
+  const origHasBullets = block.bullets.some((b) => b.trim().length > 0);
+  const origHasDesc = block.description.trim().length > 0;
+  const fieldLockHint =
+    !origHasDesc && origHasBullets
+      ? "注意：当前模块的 description 为空，请只优化 bullets 数组（保持条数与顺序一一对应），suggested_block.description 必须保持为 \"\"。"
+      : !origHasBullets && origHasDesc
+        ? "注意：当前模块的 bullets 为空，请只优化 description 字段，suggested_block.bullets 必须保持为 []。"
+        : "";
+
   const userPrompt = [
     ACTION_INSTRUCTION[action],
+    fieldLockHint,
     "",
     `当前模块（JSON）：\n${JSON.stringify(block, null, 2)}`,
-    `简历摘要：\n${resumeSummary || "（无）"}`,
+    `求职背景：${targetRoleLine}`,
     jdJson ? `目标岗位 JD（JSON）：\n${jdJson}` : "",
     "",
-    `输出格式（严格 JSON，不要 Markdown）：`,
-    `{"suggested_block":{...完整模块...},"explanation":"一句话说明改动","matched_keywords":[],"warnings":[]}`,
+    `输出格式（严格 JSON，不要 Markdown，直接以 { 开头）：`,
+    `{"suggested_block":{...完整模块...},"explanation":"具体说明优化了哪些动词、结构或表达","matched_keywords":[],"warnings":[]} /no_think`,
   ]
     .filter((s, i) => s !== "" || i < 3)
     .join("\n");
@@ -261,7 +664,7 @@ export async function generateWithLLM(
     { role: "user", content: userPrompt },
   ];
 
-  const raw = await chat(provider, messages, signal);
+  const raw = await chat(provider, messages, signalOrOptions);
   try {
     return parseAIOutput(raw, block);
   } catch (firstErr) {
@@ -276,7 +679,7 @@ export async function generateWithLLM(
             "上一次输出不是合法 JSON。请只输出符合格式的 JSON 对象本身，不要任何前后缀。",
         },
       ],
-      signal
+      signalOrOptions
     );
     try {
       return parseAIOutput(retry, block);
@@ -481,56 +884,203 @@ export function ruleSuggestion(
 
 /* ---------------- 模型连通性测试 ---------------- */
 
+export type ProviderDiagnosticCode =
+  | "ok"
+  | "cors_or_network"
+  | "auth_error"
+  | "model_not_found"
+  | "timeout"
+  | "http_error"
+  | "unknown";
+
+export interface ProviderTestResult {
+  ok: boolean;
+  latency: number;
+  message: string;
+  json: boolean;
+  code: ProviderDiagnosticCode;
+  hint?: string;
+  availableModels?: string[];
+}
+
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof DOMException && e.name === "AbortError") ||
+    (e instanceof Error && e.name === "AbortError")
+  );
+}
+
+function isNetworkOrCorsError(e: unknown): boolean {
+  if (e instanceof TypeError) return true;
+  if (!(e instanceof Error)) return false;
+  return /failed to fetch|networkerror|load failed|fetch failed|cors/i.test(
+    e.message
+  );
+}
+
 export async function testProvider(
   p: ModelProvider
-): Promise<{ ok: boolean; latency: number; message: string; json: boolean }> {
+): Promise<ProviderTestResult> {
   const t0 = performance.now();
+  const base = normalizeProviderBaseUrl(p.base_url, p.protocol);
+
   try {
     if (p.protocol === "ollama") {
-      const base = (p.base_url || "http://localhost:11434").replace(/\/$/, "");
       const res = await fetchWithTimeout(
         `${base}/api/tags`,
         { method: "GET" },
         p.timeout_ms
       );
-      const models: string[] = (res?.models || []).map(
-        (m: { name: string }) => m.name
+      const models: string[] = (res?.models || [])
+        .map((m: { name?: string }) => m.name)
+        .filter((name: unknown): name is string => typeof name === "string");
+      const hasModel = models.some(
+        (m) => m === p.model_name || m.startsWith(p.model_name)
       );
-      const hasModel = models.some((m) => m.startsWith(p.model_name));
+      const latency = Math.round(performance.now() - t0);
+
+      if (!hasModel) {
+        return {
+          ok: false,
+          latency,
+          code: "model_not_found",
+          availableModels: models,
+          message: `已连上 Ollama，但未找到模型「${p.model_name}」（本机可用：${
+            models.slice(0, 6).join("、") || "无"
+          }）`,
+          hint: models.length
+            ? `请执行 ollama pull ${p.model_name}，或改用上方已安装模型。`
+            : `本机暂无已拉取模型，请先执行 ollama pull ${p.model_name}。`,
+          json: false,
+        };
+      }
+
       return {
         ok: true,
-        latency: Math.round(performance.now() - t0),
-        message: hasModel
-          ? `连接成功，发现模型 ${p.model_name}（本机共 ${models.length} 个模型）`
-          : `连接成功，但未找到模型 ${p.model_name}（本机：${
-              models.slice(0, 4).join("、") || "空"
-            }）`,
+        latency,
+        code: "ok",
+        availableModels: models,
+        message: `连接成功，发现模型 ${p.model_name}（本机共 ${models.length} 个模型）`,
         json: true,
       };
     }
-    const base = (p.base_url || "https://api.openai.com/v1").replace(/\/$/, "");
+
+    const apiKey = isEncryptedPayload(p.api_key)
+      ? await resolveApiKey(p.api_key)
+      : p.api_key || "";
     const res = await fetchWithTimeout(
       `${base}/models`,
       {
         method: "GET",
-        headers: p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {},
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       },
       p.timeout_ms
     );
+    const latency = Math.round(performance.now() - t0);
+    const models: string[] = Array.isArray(res?.data)
+      ? res.data
+          .map((m: { id?: string }) => m.id)
+          .filter((id: unknown): id is string => typeof id === "string")
+      : [];
+
+    if (
+      models.length > 0 &&
+      p.model_name &&
+      !models.includes(p.model_name)
+    ) {
+      return {
+        ok: false,
+        latency,
+        code: "model_not_found",
+        availableModels: models,
+        message: `鉴权通过，但服务模型列表中未找到「${p.model_name}」（可用：${models
+          .slice(0, 6)
+          .join("、")}）`,
+        hint: "请核对 Model 名称拼写，或选择服务返回的可用模型。",
+        json: false,
+      };
+    }
+
     return {
       ok: true,
-      latency: Math.round(performance.now() - t0),
+      latency,
+      code: "ok",
+      ...(models.length ? { availableModels: models } : {}),
       message: "连接成功，鉴权通过",
       json: true,
     };
   } catch (e) {
+    if (isAbortError(e)) {
+      return {
+        ok: false,
+        latency: 0,
+        code: "timeout",
+        message: `连接超时（>${p.timeout_ms / 1000}s），请确认服务已启动且网络畅通`,
+        hint: "可检查服务是否正常运行、端口是否被占用/拦截，或在高级参数中增大超时时间。",
+        json: false,
+      };
+    }
+
+    if (e instanceof ProviderError) {
+      if (e.status === 401 || e.status === 403) {
+        return {
+          ok: false,
+          latency: 0,
+          code: "auth_error",
+          message: `鉴权失败（HTTP ${e.status}）：请检查 API Key 是否正确或有效`,
+          hint: "请在模型配置中核对 API Key（Bearer Token）、权限范围或账户余额。",
+          json: false,
+        };
+      }
+      if (e.status === 404) {
+        return {
+          ok: false,
+          latency: 0,
+          code: "model_not_found",
+          message: `未找到模型或接口（HTTP 404）：请检查 Base URL 与模型名称「${p.model_name}」`,
+          hint:
+            p.protocol === "ollama"
+              ? `请确认 Base URL 为 Ollama 根地址（如 http://localhost:11434）且已拉取 ${p.model_name}。`
+              : "请确认 Base URL 是否包含 /v1 前缀，以及该服务是否支持 /models 与所填模型名。",
+          json: false,
+        };
+      }
+      return {
+        ok: false,
+        latency: 0,
+        code: "http_error",
+        message: `服务返回 HTTP ${e.status}，请检查服务状态与请求地址`,
+        hint:
+          e.status === 429
+            ? "请求过于频繁或额度不足（429），请稍后重试。"
+            : "请检查服务端日志与 Base URL 配置。",
+        json: false,
+      };
+    }
+
+    if (isNetworkOrCorsError(e)) {
+      const isLocal =
+        p.protocol === "ollama" ||
+        /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i.test(base);
+      return {
+        ok: false,
+        latency: 0,
+        code: "cors_or_network",
+        message: isLocal
+          ? "无法连接到本地服务（可能被浏览器 CORS 跨域拦截或服务未启动）"
+          : "网络请求被拦截（可能存在 CORS 跨域限制或网络不可达）",
+        hint: isLocal
+          ? `若服务已启动仍报此错，请设置环境变量 OLLAMA_ORIGINS="*" 后重启服务，并确认地址 ${base} 可访问。`
+          : "浏览器端直连需目标 API 允许当前页面 Origin 的 CORS 跨域请求，或通过本地/私有代理转发。",
+        json: false,
+      };
+    }
+
     return {
       ok: false,
       latency: 0,
-      message:
-        e instanceof DOMException && e.name === "AbortError"
-          ? `连接超时（>${p.timeout_ms / 1000}s），请确认服务已启动`
-          : `连接失败：${e instanceof Error ? e.message : "网络错误"}`,
+      code: "unknown",
+      message: `连接失败：${e instanceof Error ? e.message : "未知错误"}`,
       json: false,
     };
   }

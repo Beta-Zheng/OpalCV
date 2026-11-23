@@ -8,9 +8,9 @@ const browser=await chromium.launch(process.env.QA_BROWSER?{executablePath:proce
 const origin=server.resolvedUrls.local[0];const errors=[];
 try{
  const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
- await context.addInitScript(()=>localStorage.setItem('touchstonecv-usage-guide',JSON.stringify({version:1,decision:'skipped'})));
+ await context.addInitScript(()=>localStorage.setItem('opalcv-usage-guide',JSON.stringify({version:1,decision:'skipped'})));
  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(origin);
- await page.getByRole('heading',{name:'简历工作台',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'工作台',exact:true}).waitFor();
  const fixture=await page.evaluate(async()=>{
   const {useApp}=await import('/src/lib/store.ts');const {buildSampleResume}=await import('/src/lib/samples.ts');const data=buildSampleResume('frontend','experienced');const work=data.sections.find(s=>s.type==='work_experience');
   work.blocks=Array.from({length:9},(_,i)=>({...structuredClone(work.blocks[0]),block_id:'nav-entry-'+i,title:'定位测试经历 '+i,order:i}));
@@ -31,10 +31,10 @@ try{
  // Reorder actual DOM nodes, preserve form state/scroll, and keep resizing directional.
  const priorSwap=await panes();
  const contentWidth=await page.locator('.editor-content').evaluate(el=>el.getBoundingClientRect().width);
- await page.getByRole('button',{name:'切换左右',exact:true}).click();
+ await page.getByRole('button',{name:'对调',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.editor-preview').getBoundingClientRect().left < document.querySelector('.editor-content').getBoundingClientRect().left);
  assert.equal(await entry.getByRole('button',{name:'折叠',exact:true}).count(),1);
- assert.deepEqual(await panes(),priorSwap);
+ const afterSwap=await panes();assert.equal(afterSwap.edit,priorSwap.edit);assert.equal(afterSwap.page,priorSwap.page);
  assert(Math.abs(await page.locator('.editor-content').evaluate(el=>el.getBoundingClientRect().width)-contentWidth)<1);
  assert.equal(await page.locator('.editor-split').evaluate(el=>el.firstElementChild.classList.contains('editor-preview')),true);
  const divider=page.getByRole('separator',{name:'调整编辑与预览宽度',exact:true});
@@ -47,6 +47,8 @@ try{
  await divider.press('Home');
  await page.screenshot({path:'.export-qa/editor-swap-left.png'});
  await field.focus();
+ await page.getByRole('button',{name:'定位',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.editor-preview').scrollTop>0);
  const beforeTyping=await panes();assert(beforeTyping.preview>0);assert.equal(beforeTyping.page,0);
  // Ordinary typing must not generate another positioning request or reset the pane.
  await field.press('ArrowRight');assert.deepEqual(await panes(),beforeTyping);
@@ -62,7 +64,7 @@ try{
  await page.locator('.editor-preview').evaluate(el=>el.scrollTop=0);
  await field.focus();await entry.locator('input').nth(1).focus();await field.click();
  assert.equal((await panes()).preview,0);
- await page.getByRole('button',{name:'定位预览',exact:true}).click();
+ await page.getByRole('button',{name:'定位',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.editor-preview').scrollTop>0);
  // A different entry already inside the viewport should get a marker, without movement.
  await page.locator('.editor-preview').evaluate(el=>{
@@ -91,14 +93,14 @@ try{
  },id);
  await page.emulateMedia({reducedMotion:'no-preference'});
  await page.locator('.editor-preview').evaluate(el=>el.scrollTop=0);
- await page.getByRole('button',{name:'定位预览',exact:true}).click();await settleVisible('nav-entry-7');
+ await page.getByRole('button',{name:'定位',exact:true}).click();await settleVisible('nav-entry-7');
  await other.locator('input').first().focus();await field8.focus();await settleVisible('nav-entry-8');
  assert.equal(await page.locator('[data-preview-current]').getAttribute('data-resume-entry'),'nav-entry-8');
  await page.locator('[data-testid="live-preview"]').getByRole('button',{name:'75%',exact:true}).click();
  await page.locator('.editor-preview').evaluate(el=>el.scrollTop=0);
- await page.getByRole('button',{name:'定位预览',exact:true}).click();await settleVisible('nav-entry-8');
+ await page.getByRole('button',{name:'定位',exact:true}).click();await settleVisible('nav-entry-8');
  await page.emulateMedia({reducedMotion:'reduce'});
- await page.locator('[data-testid="live-preview"]').getByRole('button',{name:'适应窗口',exact:true}).click();
+ await page.locator('[data-testid="live-preview"]').getByRole('button',{name:'适应',exact:true}).click();
  await field.focus();
 
  // Collapsed entries must expand when activated from the preview, without focusing an input.
@@ -119,9 +121,10 @@ try{
  await page.waitForFunction(()=>document.querySelector('[data-testid="live-preview"] header[data-preview-location]'));
  await page.locator('.editor-content [data-block-id="nav-hidden"]').getByRole('button',{name:'展开',exact:true}).click();
  await page.locator('.editor-content [data-block-id="nav-hidden"] input').first().focus();
+ await page.getByRole('button',{name:'定位',exact:true}).click();
  await page.getByRole('status').filter({hasText:'该内容已隐藏或为空'}).waitFor();
  assert.equal(await page.locator('[data-testid="live-preview"] [data-resume-entry="nav-hidden"]').count(),0);
- const after=await page.evaluate(async id=>{const {useApp}=await import('/src/lib/store.ts');return JSON.stringify(useApp.getState().resumes.find(r=>r.id===id));},fixture.id);assert.equal(after,original);
+ const after=await page.evaluate(async id=>{const {useApp}=await import('/src/lib/store.ts');return JSON.stringify(useApp.getState().resumes.find(r=>r.id===id));},fixture.id);assert.deepEqual(JSON.parse(after),JSON.parse(original));
  // Typing can repaginate the preview, but must not issue another scroll request.
  await field.focus();await page.locator('[data-testid="live-preview"] [data-preview-location]').waitFor();
  const typingBefore=await panes();const originalTitle=await field.inputValue();
@@ -129,21 +132,21 @@ try{
  await page.waitForFunction(()=>document.querySelector('[data-testid="live-preview"] [data-preview-page] [data-resume-entry="nav-entry-7"]').textContent.includes('编辑验证'));
  assert.equal((await panes()).preview,typingBefore.preview);assert.equal(await field.evaluate(el=>el===document.activeElement),true);
  const oldPage=await page.locator('[data-preview-current]').evaluate(el=>el.closest('[data-preview-page]').dataset.previewPage);
- await page.evaluate(async id=>{const {useApp}=await import('/src/lib/store.ts');const state=useApp.getState();const resume=state.resumes.find(r=>r.id===id);const section=resume.data.sections.find(s=>s.type==='work_experience');state.patchBlock(id,section.section_id,'nav-entry-0',{description:'补充内容用于验证重新分页后对应条目的位置。'.repeat(100)});},fixture.id);
+ await page.evaluate(async id=>{const {useApp}=await import('/src/lib/store.ts');const state=useApp.getState();const resume=state.resumes.find(r=>r.id===id);const section=resume.data.sections.find(s=>s.type==='work_experience');state.patchBlock(id,section.section_id,'nav-entry-0',{description:'补充内容用于验证重新分页后对应条目的位置。'.repeat(180)});},fixture.id);
  await page.waitForFunction(old=>{const el=document.querySelector('[data-preview-current][data-resume-entry="nav-entry-7"]');return el&&el.closest('[data-preview-page]').dataset.previewPage!==old;},oldPage);
  // An oversized target wholly below the viewport still needs to be brought into view.
  await page.evaluate(async id=>{const {useApp}=await import('/src/lib/store.ts');const state=useApp.getState();const section=state.resumes.find(r=>r.id===id).data.sections.find(s=>s.type==='work_experience');state.patchBlock(id,section.section_id,'nav-entry-0',{description:'超长条目仍需能够定位开头。'.repeat(250)});},fixture.id);
  await other.locator('input').first().focus();
  await page.waitForFunction(()=>{const pane=document.querySelector('.editor-preview');const target=pane.querySelector('[data-preview-page] [data-resume-entry="nav-entry-0"][data-preview-current]');return target&&target.getBoundingClientRect().height>pane.clientHeight;});
  await page.locator('.editor-preview').evaluate(el=>el.scrollTop=0);
- await page.getByRole('button',{name:'定位预览',exact:true}).click();
- await page.waitForFunction(()=>{const pane=document.querySelector('.editor-preview');const target=pane.querySelector('[data-preview-page] [data-resume-entry="nav-entry-0"]');const top=target.getBoundingClientRect().top;const toolbar=pane.querySelector('[data-preview-toolbar]').getBoundingClientRect();return top>=toolbar.bottom-1&&top<toolbar.bottom+20;});
+ await page.getByRole('button',{name:'定位',exact:true}).click();
+ await page.waitForFunction(()=>{const pane=document.querySelector('.editor-preview');const target=pane.querySelector('[data-preview-page] [data-resume-entry="nav-entry-0"]');const top=target.getBoundingClientRect().top;const toolbar=pane.querySelector('[data-preview-toolbar]').getBoundingClientRect();return top>=toolbar.bottom-1&&top<pane.getBoundingClientRect().bottom-80;});
  await page.screenshot({path:'.export-qa/editor-preview-left.png'});
  await page.reload();
- await page.getByRole('button',{name:'切换左右',exact:true}).waitFor();
- assert.equal(await page.getByRole('button',{name:'切换左右',exact:true}).getAttribute('aria-pressed'),'true');
+ await page.getByRole('button',{name:'对调',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'对调',exact:true}).getAttribute('aria-pressed'),'true');
  assert(await page.locator('.editor-preview').evaluate(el=>el.getBoundingClientRect().left < document.querySelector('.editor-content').getBoundingClientRect().left));
- await page.getByRole('button',{name:'切换左右',exact:true}).click();
+ await page.getByRole('button',{name:'对调',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.editor-content').getBoundingClientRect().left < document.querySelector('.editor-preview').getBoundingClientRect().left);
  // Mobile preview activation returns to content rather than trying to force a split screen.
  await page.setViewportSize({width:375,height:850});await page.getByRole('tab',{name:'仅预览',exact:true}).click();

@@ -8,6 +8,8 @@ import {
   hasReviewedTarget,
   groupResumeFamilies,
   isCurrentExport,
+  blockHasContent,
+  sectionHasContent,
 } from "../workflow";
 import { paginateResume } from "../pagination";
 import { testBlock, testResume } from "./fixtures";
@@ -196,4 +198,12 @@ it('待办入口可刷新与返回，路由拒绝无关参数', () => {
   expect(hashView(viewHash(due))).toEqual(due);
   expect(hashView('#/home?panel=ai')).toBeNull();
   expect(hashView('#/editor/resume_test?panel=unknown')).toBeNull();
+});
+
+it('空白简历的默认空技能分组不视为有内容，避免预览只剩空模块标题', () => {
+  const blank = emptyResume();
+  const skillsSec = blank.sections.find((s) => s.type === 'skills')!;
+  expect(skillsSec.blocks[0].title).toBe('技能');
+  expect(blockHasContent(skillsSec.blocks[0])).toBe(false);
+  expect(sectionHasContent(skillsSec)).toBe(false);
 });

@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { parseJD, matchResume } from "../jd";
+import { describe, it, expect, vi } from "vitest";
+import { parseJD, parseJDSemantically, matchResume } from "../jd";
 import { SAMPLE_JD_TEXT } from "../samples";
+import type { ModelProvider } from "../../types";
 
 describe("parseJD：JD 结构化解析", () => {
   const jd = parseJD(SAMPLE_JD_TEXT, "resume_001");
@@ -65,5 +66,159 @@ describe("matchResume：简历匹配分析", () => {
       expect(report[k]).toBeLessThanOrEqual(100);
     }
     expect(report.suggestions.length).toBeGreaterThan(0);
+  });
+});
+
+describe("parseJD：非研发通用岗位词典与规则覆盖（R5/F4）", () => {
+  it("识别商业分析、产品、运营、设计、市场与数据财会岗位技能与标题", () => {
+    const biz = parseJD(
+      "高级商业分析经理\n岗位职责：负责 SaaS 商业化变现、P&L 预算管理与竞品分析。\n任职要求：熟悉 SQL、Tableau、OKR 与 ROI 测算，3-5年相关经验，硕士优先。",
+      "r_biz"
+    );
+    expect(biz.structured.job_title).toBe("高级商业分析经理");
+    expect(biz.structured.experience_years).toBe(3);
+    expect(biz.structured.education).toBe("硕士");
+    const bizSkills = biz.structured.skills.map((s) => s.toLowerCase());
+    expect(bizSkills).toEqual(
+      expect.arrayContaining(["商业分析", "saas", "商业化", "p&l", "预算管理", "竞品分析", "sql", "tableau", "okr", "roi"])
+    );
+
+    const pmOps = parseJD(
+      "高级产品运营专家\n岗位职责：主导 PRD 撰写、A/B测试、用户增长与私域流量精细化运营。\n任职要求：精通 Figma、Axure、漏斗分析与内容营销，具备 SEO/SEM 经验。",
+      "r_pm"
+    );
+    const pmSkills = pmOps.structured.skills.map((s) => s.toLowerCase());
+    expect(pmSkills).toEqual(
+      expect.arrayContaining(["prd", "a/b测试", "用户增长", "私域流量", "精细化运营", "figma", "axure", "漏斗分析", "内容营销", "seo", "sem"])
+    );
+
+    const finDesign = parseJD(
+      "资深财务分析与风控顾问\n岗位职责：负责财务建模、合并报表、风险控制与尽职调查。\n任职要求：持有 CPA 或 CFA 证书，熟练使用 Excel、Power BI、SAP 与 Blender。",
+      "r_fin"
+    );
+    expect(finDesign.structured.job_title).toContain("顾问");
+    const finSkills = finDesign.structured.skills.map((s) => s.toLowerCase());
+    expect(finSkills).toEqual(
+      expect.arrayContaining(["财务分析", "财务建模", "合并报表", "风险控制", "尽职调查", "cpa", "cfa", "excel", "power bi", "sap", "blender"])
+    );
+  });
+});
+
+describe("parseJDSemantically：混合语义解析与隐私门控", () => {
+  const externalProvider: ModelProvider = {
+    id: "ext_1",
+    name: "OpenAI",
+    type: "external",
+    protocol: "openai_compatible",
+    base_url: "https://api.openai.com/v1",
+    api_key: "sk-test",
+    model_name: "gpt-4o-mini",
+    temperature: 0.2,
+    max_tokens: 1000,
+    timeout_ms: 5000,
+    enabled: true,
+    created_at: "2026-01-01T00:00:00Z",
+  };
+
+  const localProvider: ModelProvider = {
+    ...externalProvider,
+    id: "loc_1",
+    name: "Local Ollama",
+    type: "local",
+    protocol: "ollama",
+    base_url: "http://localhost:11434",
+    api_key: "",
+    model_name: "qwen2.5",
+  };
+
+  it("无启用模型时完全离线运行本地规则引擎", async () => {
+    const chatFn = vi.fn();
+    const res = await parseJDSemantically(
+      "产品经理\n要求：熟悉 PRD、A/B测试与 SQL。",
+      "r1",
+      {
+        models: [],
+        privacy: { allowExternal: false, route: "local_first" },
+        chatFn,
+      }
+    );
+    expect(res.usedAI).toBe(false);
+    expect(res.reason).toBe("rules");
+    expect(chatFn).not.toHaveBeenCalled();
+    expect(res.semantic.source).toBe("local");
+    expect(res.jd.structured.skills.map((s) => s.toLowerCase())).toContain("prd");
+  });
+
+  it("外部模型未通过隐私确认时绝不发出外部请求", async () => {
+    const chatFn = vi.fn();
+    const res = await parseJDSemantically(
+      "增长产品经理\n要求：熟悉用户增长与漏斗分析。",
+      "r1",
+      {
+        models: [externalProvider],
+        privacy: { allowExternal: true, route: "ask_before_external" },
+        confirmExternal: async () => false,
+        chatFn,
+      }
+    );
+    expect(res.usedAI).toBe(false);
+    expect(res.reason).toBe("external_declined");
+    expect(res.pendingProvider?.id).toBe("ext_1");
+    expect(chatFn).not.toHaveBeenCalled();
+  });
+
+  it("外部模型经显式确认后提取结构化胜任力与同义词", async () => {
+    const chatFn = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        role_category: "增长产品",
+        competencies: [
+          {
+            name: "实验驱动增长",
+            category: "core",
+            synonyms: ["A/B实验", "灰度测试", "Growth Hacking"],
+            evidence_hint: "给出转化率提升幅度和样本量",
+          },
+        ],
+        synonyms: {
+          用户增长: ["拉新促活", "留存提升"],
+        },
+      })
+    );
+
+    const res = await parseJDSemantically(
+      "增长产品经理\n要求：熟悉用户增长与实验迭代。",
+      "r1",
+      {
+        models: [externalProvider],
+        privacy: { allowExternal: true, route: "ask_before_external" },
+        confirmedExternal: true,
+        chatFn,
+      }
+    );
+
+    expect(chatFn).toHaveBeenCalledTimes(1);
+    expect(res.usedAI).toBe(true);
+    expect(res.reason).toBe("ai");
+    expect(res.semantic.source).toBe("ai");
+    expect(res.semantic.competencies[0].name).toBe("实验驱动增长");
+    expect(res.semantic.synonyms["实验驱动增长"]).toContain("A/B实验");
+    expect(res.semantic.synonyms["用户增长"]).toContain("拉新促活");
+  });
+
+  it("本地模型返回非法 JSON 时安全回退本地规则结果", async () => {
+    const chatFn = vi.fn().mockResolvedValue("not valid json");
+    const res = await parseJDSemantically(
+      "商业分析师\n要求：熟悉商业分析与 SQL。",
+      "r1",
+      {
+        models: [localProvider],
+        privacy: { allowExternal: false, route: "local_only" },
+        chatFn,
+      }
+    );
+    expect(chatFn).toHaveBeenCalledTimes(1);
+    expect(res.usedAI).toBe(false);
+    expect(res.reason).toBe("ai_fallback");
+    expect(res.jd.structured.skills).toContain("商业分析");
   });
 });

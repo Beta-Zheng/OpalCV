@@ -1,4 +1,4 @@
-export const GUIDE_STORAGE_KEY = "touchstonecv-usage-guide";
+export const GUIDE_STORAGE_KEY = "opalcv-usage-guide";
 export type GuideDecision = "started" | "skipped" | "completed" | "existing";
 type GuideStorage = Pick<Storage, "getItem" | "setItem">;
 
@@ -84,5 +84,5 @@ export const GUIDE_STEPS = [
 ] as const;
 
 export function openUsageGuide() {
-  window.dispatchEvent(new Event("touchstonecv-open-guide"));
+  window.dispatchEvent(new Event("opalcv-open-guide"));
 }

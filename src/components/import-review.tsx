@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { BasicInfo, Block, ResumeData, SectionType } from "../types";
 import { SECTION_LABELS } from "../types";
 import { uid } from "../lib/utils";
-import { Btn } from "./ui";
+import { Btn, GlassSelect } from "./ui";
 
 const BLOCK_TYPES: Record<SectionType, Block["type"]> = {
   basic_info: "custom_text",
@@ -169,43 +169,51 @@ export default function ImportReview({
                 className="mt-4 border-t border-line pt-3"
               >
                 <h5 className="text-[13px] font-bold">{s.title}</h5>
-                <label className="mt-2 block text-[12px]">栏目用途
-                  <select data-ui-select aria-label={`栏目用途：${s.title}`} className="field-input mt-1" value={s.type}
-                    onChange={e => onChange({ ...data, sections: data.sections.map(section => section.section_id === s.section_id ? { ...section, type: e.target.value as SectionType } : section) })}>
-                    {Object.entries(SECTION_LABELS).filter(([type]) => type !== 'basic_info').map(([type,label]) => <option key={type} value={type}>{label}</option>)}
-                  </select>
-                </label>
+                <div className="mt-2 block text-[12px] text-ink-500">
+                  <span className="mb-1 block font-medium">栏目用途</span>
+                  <GlassSelect
+                    ariaLabel={`栏目用途：${s.title}`}
+                    className="w-full"
+                    value={s.type}
+                    onChange={(v) =>
+                      onChange({
+                        ...data,
+                        sections: data.sections.map((section) =>
+                          section.section_id === s.section_id
+                            ? { ...section, type: v as SectionType }
+                            : section
+                        ),
+                      })
+                    }
+                    options={Object.entries(SECTION_LABELS)
+                      .filter(([type]) => type !== "basic_info")
+                      .map(([type, label]) => ({ value: type, label }))}
+                  />
+                </div>
                 {s.blocks.map((b) => (
                   <div
                     key={b.block_id}
-                    className="mt-2 rounded-lg bg-paper-50 p-3"
+                    className="soft-panel mt-2.5 rounded-2xl p-3"
                   >
-                    <label className="block text-[11px]">
-                      条目归属
-                      <select data-ui-select
-                        aria-label={`条目归属 ${b.title || s.title}`}
-                        className="field-input mt-1"
+                    <div className="block text-[11px] text-ink-500">
+                      <span className="mb-1 block font-medium">条目归属</span>
+                      <GlassSelect
+                        ariaLabel={`条目归属 ${b.title || s.title}`}
+                        className="w-full"
                         value={s.section_id}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           onChange(
-                            moveDraftBlock(
-                              data,
-                              s.section_id,
-                              b.block_id,
-                              e.target.value
-                            )
+                            moveDraftBlock(data, s.section_id, b.block_id, v)
                           )
                         }
-                      >
-                        {data.sections
-                          .filter((s) => s.type !== "basic_info")
-                          .map((s) => (
-                            <option key={s.section_id} value={s.section_id}>
-                              {s.title}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
+                        options={data.sections
+                          .filter((sec) => sec.type !== "basic_info")
+                          .map((sec) => ({
+                            value: sec.section_id,
+                            label: sec.title,
+                          }))}
+                      />
+                    </div>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       {(
                         [

@@ -56,12 +56,15 @@ describe('篇幅调整的内容与排版边界',()=>{
     expect(removableFitEntries(r,[],new Set(),{short:60,long:300})[0].block.block_id).toBe('long');
     expect(removableFitEntries(r,['React'],new Set())[0].reason).toContain('命中 1 个岗位词项');
   });
-  it('候选优先保留字号和适中间距，紧凑原稿不被放宽',()=>{
+  it('候选优先保留字号和适中间距，紧凑原稿不被放宽，且窄边距/行高微调优先于缩字号',()=>{
     const r=testResume();r.theme.font_size=16;
     const compact={...r,theme:{...r.theme,density:'compact' as const}};
+    const narrow={...r,theme:{...r.theme,page_margin:'narrow' as const,line_height:1.35}};
     const small={...r,theme:{...r.theme,font_size:15.5}};
     expect(fitLayoutCost(r,compact)).toBeLessThan(fitLayoutCost(r,small));
+    expect(fitLayoutCost(r,narrow)).toBeLessThan(fitLayoutCost(r,small));
     expect(fitLayoutCost(r,compact,.1)).toBeGreaterThan(fitLayoutCost(r,compact,.8));
     expect(onePageLayouts(compact).every(c=>c.theme.density==='compact')).toBe(true);
+    expect(onePageLayouts(r).some(c=>c.theme.page_margin==='narrow'&&c.theme.font_size===16)).toBe(true);
   });
 });

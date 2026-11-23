@@ -35,7 +35,7 @@ const server = createServer(async (req, res) => {
     }
     const path = resolve(
       "dist",
-      decodeURIComponent((req.url ?? "/").replace(/^\/(?:TouchstoneCV\/)?/, ""))
+      decodeURIComponent((req.url ?? "/").replace(/^\/(?:OpalCV\/)?/, ""))
     );
     if (
       !path.startsWith(resolve("dist") + "/") &&
