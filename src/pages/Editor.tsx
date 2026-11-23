@@ -154,7 +154,7 @@ function EditorActionMenu({
         className={cx(
           "inline-flex items-center justify-center gap-1 rounded-full transition-colors",
           icon && !label
-            ? "tool-btn h-8 px-2 text-ink-600"
+            ? "tool-btn h-9 w-auto px-2.5 text-ink-600"
             : "border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-subtle",
           open && "bg-brand-50 text-brand-700"
         )}
@@ -642,29 +642,30 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
         data-testid="editor-header"
       >
         {/* 第一行：文档标题、保存状态与文档级操作 */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <button
-              className="tool-btn shrink-0 rounded-full"
+              className="tool-btn h-9 w-9 shrink-0 rounded-full"
               aria-label="返回工作台"
               onClick={() => app.go({ name: "home" })}
             >
-              <IconChevronLeft size={18} />
+              <IconChevronLeft size={19} />
             </button>
             <input
               aria-label="简历标题"
               title={resume.title}
-              className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[15.5px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300 sm:max-w-md"
+              className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[15.5px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300"
               value={resume.title}
               onChange={(e) => app.renameResume(resumeId, e.target.value)}
             />
-            <div className="hidden shrink-0 sm:block">
-              <SaveIndicator />
-            </div>
-            <div className="shrink-0 sm:hidden"><SaveIndicator compact /></div>
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
+            <div className="hidden shrink-0 items-center pr-1.5 sm:flex">
+              <SaveIndicator />
+            </div>
+            <div className="shrink-0 sm:hidden"><SaveIndicator compact /></div>
+            <span className="mx-1 hidden h-4 w-px bg-line sm:inline-block" aria-hidden="true" />
             <div className="hidden items-center gap-0.5 sm:inline-flex">
               <button
                 type="button"
@@ -672,9 +673,9 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 onClick={handleUndo}
                 title={t("撤销 (Ctrl+Z)", "Undo (Ctrl+Z)")}
                 aria-label={t("撤销", "Undo")}
-                className="tool-btn rounded-full"
+                className="tool-btn h-9 w-9 rounded-full"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M9 14 4 9l5-5" />
                   <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
                 </svg>
@@ -685,9 +686,9 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 onClick={handleRedo}
                 title={t("重做 (Ctrl+Shift+Z)", "Redo (Ctrl+Shift+Z)")}
                 aria-label={t("重做", "Redo")}
-                className="tool-btn rounded-full"
+                className="tool-btn h-9 w-9 rounded-full"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="m15 14 5-5-5-5" />
                   <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
                 </svg>
@@ -696,36 +697,29 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
             <div className="hidden sm:contents">
               <button
                 type="button"
-                className="tool-btn rounded-full"
+                className="tool-btn h-9 w-9 rounded-full"
                 title={t("历史版本", "History")}
                 aria-label={t("历史版本", "History")}
                 onClick={() => setTool("versions")}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="6" y1="3" x2="6" y2="15" />
-                  <circle cx="18" cy="6" r="3" />
-                  <circle cx="6" cy="18" r="3" />
-                  <path d="M18 9a9 9 0 0 1-9 9" />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                  <path d="M12 7v5l4 2" />
                 </svg>
               </button>
             </div>
             <button
               type="button"
-              className="tool-btn shrink-0 rounded-full"
+              className="tool-btn h-9 w-9 shrink-0 rounded-full"
               title={t("模板与设置", "Template & Style")}
               aria-label={t("模板与设置", "Template & Style")}
               onClick={() => setSettingsOpen(true)}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="4" y1="21" x2="4" y2="14" />
-                <line x1="4" y1="10" x2="4" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="12" />
-                <line x1="12" y1="8" x2="12" y2="3" />
-                <line x1="20" y1="21" x2="20" y2="16" />
-                <line x1="20" y1="12" x2="20" y2="3" />
-                <line x1="2" y1="14" x2="6" y2="14" />
-                <line x1="10" y1="8" x2="14" y2="8" />
-                <line x1="18" y1="16" x2="22" y2="16" />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <path d="M3 9h18" />
+                <path d="M9 21V9" />
               </svg>
             </button>
             <EditorActionMenu
@@ -811,19 +805,19 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               ))}
           </div>
 
-          <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:ml-auto sm:inline-flex">
+          <div className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] sm:ml-auto sm:inline-flex">
             <button
               type="button"
               aria-pressed={outlineOpen}
               aria-label={t("目录", "Outline")}
               title={t("目录", "Outline")}
               className={cx(
-                "tool-btn rounded-full",
+                "tool-btn h-9 w-9 rounded-full",
                 outlineOpen && "bg-brand-50 text-brand-700"
               )}
               onClick={toggleOutline}
             >
-              <IconBookOpen size={15} />
+              <IconBookOpen size={18} />
             </button>
             <button
               type="button"
@@ -831,12 +825,14 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               aria-label={t("建议", "AI Polish")}
               title={t("建议", "AI Polish")}
               className={cx(
-                "tool-btn relative rounded-full",
+                "tool-btn relative h-9 w-9 rounded-full",
                 rightOpen && panelTab === "ai" && "bg-brand-50 text-brand-700"
               )}
               onClick={() => openRightPanel("ai", true)}
             >
-              <IconPanelRight size={15} />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+              </svg>
               {rightOpen && panelTab === "ai" && (
                 <span className="sp-dot absolute right-1.5 top-1.5" aria-hidden="true" />
               )}
@@ -847,7 +843,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               aria-label={resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
               title={resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
               className={cx(
-                "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11.5px] font-medium transition-colors",
+                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition-colors",
                 !!resume.target && rightOpen && panelTab === "jd"
                   ? "border-brand-400 bg-brand-50 text-brand-700"
                   : resume.target
@@ -859,7 +855,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 else openRightPanel("jd", true);
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" />
                 <circle cx="12" cy="12" r="4" />
                 <circle cx="12" cy="12" r="1" fill="currentColor" />
@@ -871,11 +867,8 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               align="right"
               ariaLabel={t("辅助工具", "Tools")}
               icon={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                 </svg>
               }
               items={[
