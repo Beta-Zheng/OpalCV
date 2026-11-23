@@ -8,7 +8,6 @@ build/
 .export-qa/
 
 # Local debug & QA artifacts
-qa/
 shots/
 e2e/e2e-tmp/
 
