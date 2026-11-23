@@ -931,13 +931,13 @@ export default function Models() {
                     "info",
                     encryptedModels.length > 0
                       ? t("已暂时锁定：主密码已从内存清除，已加密 Key 仍受保护", "Locked: passphrase cleared from memory; keys stay encrypted")
-                      : t("已取消本次主密码", "Session passphrase cleared")
+                      : t("已忘记本次主密码", "Session passphrase forgotten")
                   );
                 }}
               >
                 {encryptedModels.length > 0
                   ? t("暂时锁定", "Lock Now")
-                  : t("取消主密码", "Cancel Passphrase")}
+                  : t("忘记主密码", "Forget Passphrase")}
               </button>
             </div>
           )}
