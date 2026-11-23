@@ -25,7 +25,8 @@ export interface AISuggestionOutput {
 
 /* ---------------- 系统 Prompt（§14.1，禁止编造） ---------------- */
 
-const SYSTEM_PROMPT = `你是一名专业简历优化顾问。
+const SYSTEM_PROMPT = `/no_think
+你是一名专业简历优化顾问。
 
 要求：
 1. 只能基于用户提供的内容进行优化。
@@ -34,7 +35,7 @@ const SYSTEM_PROMPT = `你是一名专业简历优化顾问。
 4. 如果需要量化结果，只能给出"建议补充"的提示，放在 warnings 数组。
 5. 输出必须为合法 JSON。
 6. 不要输出 Markdown 代码块。
-7. 不要输出额外解释。
+7. 不要输出额外解释，不要长篇思考过程，直接输出 JSON 结果。
 8. 保持语言简洁、专业、结果导向。
 9. 保留职责强度，不得把参与或协助改成主导。保留日期、专名及估算限定词。`;
 
@@ -318,33 +319,56 @@ export async function chatOpenAI(
     };
   };
 
-  const runRequest = async (includeResponseFormat: boolean): Promise<string> => {
+  const extractMessageText = (msg: any): string => {
+    if (!msg) return "";
+    if (typeof msg.content === "string" && msg.content.trim()) {
+      return msg.content;
+    }
+    if (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim()) {
+      return msg.reasoning_content;
+    }
+    return "";
+  };
+
+  const runRequest = async (
+    includeResponseFormat: boolean,
+    timeoutMs: number
+  ): Promise<string> => {
     const init = makeInit(includeResponseFormat);
     if (stream) {
       return readStreamWithTimeout(
         `${base}/chat/completions`,
         init,
-        p.timeout_ms,
+        timeoutMs,
         parseOpenAIStreamLine,
-        (res) => res?.choices?.[0]?.message?.content ?? "",
+        (res) => extractMessageText(res?.choices?.[0]?.message),
         options
       );
     }
     const res = await fetchWithTimeout(
       `${base}/chat/completions`,
       init,
-      p.timeout_ms
+      timeoutMs
     );
-    return res?.choices?.[0]?.message?.content ?? "";
+    return extractMessageText(res?.choices?.[0]?.message);
   };
 
+  // For local reasoning models (e.g. Qwen3 / DeepSeek-R1 on LM Studio) where the user left
+  // the default 30s timeout, allow up to 120s so reasoning + JSON output won't be cut off at 30s.
+  const effectiveTimeoutMs =
+    (p.type === "local" ||
+      /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i.test(base)) &&
+    p.timeout_ms === 30000
+      ? 120000
+      : p.timeout_ms;
+
   try {
-    return await runRequest(true);
+    return await runRequest(true, effectiveTimeoutMs);
   } catch (e) {
     // LM Studio / local GGUF servers often return HTTP 400 when response_format is {"type":"json_object"}
     // (LM Studio requires "json_schema" or "text"). Retry seamlessly without response_format.
     if (e instanceof ProviderError && (e.status === 400 || e.status === 422)) {
-      return await runRequest(false);
+      return await runRequest(false, effectiveTimeoutMs);
     }
     throw e;
   }

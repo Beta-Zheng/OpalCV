@@ -56,6 +56,7 @@ const MODEL_PRESETS: Array<{
       protocol: "openai_compatible",
       base_url: "http://localhost:1234/v1",
       model_name: "qwen/qwen3.5-9b",
+      timeout_ms: 120000,
     },
   },
   {

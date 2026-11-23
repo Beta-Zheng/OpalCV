@@ -327,23 +327,27 @@ if (typeof window !== "undefined") {
       void flushSave();
     }
   });
-  try {
-    if (typeof BroadcastChannel !== "undefined") {
-      const ch = new BroadcastChannel("opalcv-storage");
-      ch.onmessage = (event) => {
-        if (event.data?.type !== "saved") return;
-        const st = useApp.getState().saveStatus;
-        if (st === "saving" || st === "conflict") {
-          useApp.setState({ saveStatus: "conflict" });
-        } else {
-          // 当前标签页无未保存修改时，自动同步最新数据以刷新本地 revision
-          void reloadFromStorage();
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const ch = new BroadcastChannel("opalcv-storage");
+          ch.onmessage = (event) => {
+            if (event.data?.type !== "saved") return;
+            const appState = useApp.getState();
+            const st = appState.saveStatus;
+            if (st === "saving" || st === "conflict") {
+              useApp.setState({ saveStatus: "conflict" });
+            } else if (
+              requests.size === 0 &&
+              !appState.suggestions.some((x) => x.status === "generating")
+            ) {
+              // 当前标签页无未保存修改且无正在进行的 AI 请求时，才自动同步最新数据
+              void reloadFromStorage();
+            }
+          };
         }
-      };
-    }
-  } catch {
-    /* BroadcastChannel is optional. */
-  }
+      } catch {
+        /* BroadcastChannel is optional. */
+      }
 }
 
 const STORE_TOAST_EN: Record<string, string> = {
@@ -1123,61 +1127,68 @@ export const useApp = create<AppState>()(
           )
             .then((out) => {
               if (controller.signal.aborted) return;
+              const updatedItem = {
+                ...base,
+                status: "success" as const,
+                suggested: out.suggested_block,
+                explanation: out.explanation,
+                warnings: out.warnings,
+                matched_keywords: out.matched_keywords,
+              };
               set((s) => ({
-                suggestions: s.suggestions.map((x) =>
-                  x.id === base.id
-                    ? {
-                        ...x,
-                        status: "success",
-                        suggested: out.suggested_block,
-                        explanation: out.explanation,
-                        warnings: out.warnings,
-                        matched_keywords: out.matched_keywords,
-                      }
-                    : x
-                ),
+                suggestions: s.suggestions.some((x) => x.id === base.id)
+                  ? s.suggestions.map((x) => (x.id === base.id ? updatedItem : x))
+                  : [updatedItem, ...s.suggestions],
               }));
             })
             .catch((e) => {
               if (controller.signal.aborted) return;
               const msg = e instanceof Error ? e.message : "生成失败";
+              const isAbortTimeout =
+                (e instanceof DOMException && e.name === "AbortError") ||
+                /aborted|timeout/i.test(msg);
               const isConn =
                 e instanceof TypeError ||
-                /failed to fetch|aborted|networkerror|load failed/i.test(msg);
-              if (isConn) {
+                /failed to fetch|networkerror|load failed/i.test(msg);
+              if (isConn && !isAbortTimeout) {
                 // 模型服务不可达 → 自动降级为本地规则引擎（失败可降级）
                 const out = ruleSuggestion(
                   action,
                   block,
                   jd?.structured.keywords ?? []
                 );
+                const fallbackItem = {
+                  ...base,
+                  status: "success" as const,
+                  engine: "rules" as const,
+                  provider_name: "本地规则引擎（自动降级）",
+                  suggested: out.suggested_block,
+                  explanation: out.explanation,
+                  matched_keywords: out.matched_keywords,
+                  warnings: [
+                    `无法连接模型服务（${provider.base_url}），已自动降级为本地规则引擎；可在「模型与隐私」中测试连接或开启外部模型`,
+                    ...out.warnings,
+                  ],
+                };
                 set((s) => ({
-                  suggestions: s.suggestions.map((x) =>
-                    x.id === base.id
-                      ? {
-                          ...x,
-                          status: "success",
-                          engine: "rules",
-                          provider_name: "本地规则引擎（自动降级）",
-                          suggested: out.suggested_block,
-                          explanation: out.explanation,
-                          matched_keywords: out.matched_keywords,
-                          warnings: [
-                            `无法连接模型服务（${provider.base_url}），已自动降级为本地规则引擎；可在「模型与隐私」中测试连接或开启外部模型`,
-                            ...out.warnings,
-                          ],
-                        }
-                      : x
-                  ),
+                  suggestions: s.suggestions.some((x) => x.id === base.id)
+                    ? s.suggestions.map((x) => (x.id === base.id ? fallbackItem : x))
+                    : [fallbackItem, ...s.suggestions],
                 }));
                 get().toast("warn", "模型连接失败，已自动降级为本地规则引擎");
               } else {
+                const errText = isAbortTimeout
+                  ? `模型响应超时（推理耗时较长，可在「模型与隐私 → 编辑模型 → 高级参数」中调大超时时间或加大 Max Tokens）`
+                  : msg;
+                const failedItem = {
+                  ...base,
+                  status: "failed" as const,
+                  error: errText,
+                };
                 set((s) => ({
-                  suggestions: s.suggestions.map((x) =>
-                    x.id === base.id
-                      ? { ...x, status: "failed", error: msg }
-                      : x
-                  ),
+                  suggestions: s.suggestions.some((x) => x.id === base.id)
+                    ? s.suggestions.map((x) => (x.id === base.id ? failedItem : x))
+                    : [failedItem, ...s.suggestions],
                 }));
                 get().toast("err", "AI 生成失败，原内容已保留");
               }
