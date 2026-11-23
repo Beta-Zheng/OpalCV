@@ -633,7 +633,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
         data-testid="editor-header"
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 xl:flex-nowrap">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 xl:flex-initial">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <button
               className="tool-btn shrink-0 rounded-full"
               aria-label="返回工作台"
@@ -644,18 +644,18 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
             <input
               aria-label="简历标题"
               title={resume.title}
-              className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[15.5px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300 xl:w-44 xl:flex-none"
+              className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[15.5px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300"
               value={resume.title}
               onChange={(e) => app.renameResume(resumeId, e.target.value)}
             />
-            <div className="hidden shrink-0 sm:block">
+            <div className="hidden shrink-0 2xl:block">
               <SaveIndicator />
             </div>
-            <div className="shrink-0 sm:hidden"><SaveIndicator compact /></div>
+            <div className="shrink-0 2xl:hidden"><SaveIndicator compact /></div>
           </div>
 
           <div
-            className="liquid-glass relative order-3 flex w-full items-center justify-center rounded-full p-0.5 sm:order-none sm:w-auto xl:mx-auto"
+            className="liquid-glass relative order-3 flex w-full shrink-0 items-center justify-center rounded-full p-0.5 sm:order-none sm:w-auto xl:mx-auto"
             role="tablist"
             onKeyDown={navigateTabs}
             aria-label={t("编辑视图", "Editor view")}
@@ -675,7 +675,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                   aria-selected={editorMode === mode}
                   tabIndex={editorMode === mode ? 0 : -1}
                   className={cx(
-                    "editor-view-tab min-h-7 rounded-full px-3 py-1 text-[12.5px] transition-all",
+                    "editor-view-tab min-h-7 shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[12.5px] transition-all",
                     editorMode === mode
                       ? "glass-lens font-semibold"
                       : "text-ink-500 hover:text-ink-900"
@@ -690,7 +690,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               ))}
           </div>
 
-          <div className="hidden items-center gap-1 text-[12px] sm:inline-flex">
+          <div className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-[12px] sm:inline-flex">
             <Btn
               variant="ghost"
               size="sm"
