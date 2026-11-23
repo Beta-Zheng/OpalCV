@@ -170,7 +170,7 @@ export function normalizeHexColor(color?: string, fallback = "4F46E5"): string {
 }
 
 export function isTwoColumnTemplate(templateId: string): boolean {
-  return /academic|two[_-]?column|2col/i.test(templateId);
+  return /executive_sidebar|two[_-]?column|2col/i.test(templateId);
 }
 
 export function formatBulletPrefix(
@@ -331,11 +331,40 @@ function buildDocxParagraph(
   )}</w:p>`;
 }
 
-function buildAvatarDrawingXml(relId: string, scale: number): string {
+function buildAvatarDrawingXml(relId: string, scale: number, align: "left" | "right" = "left"): string {
   const clamped = Math.min(2, Math.max(0.5, scale));
   const cx = Math.round(90 * clamped * 9525);
   const cy = Math.round(126 * clamped * 9525);
-  return `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:after="60"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Avatar"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1" name="avatar"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  return `<w:p><w:pPr><w:jc w:val="${align}"/><w:spacing w:after="60"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Avatar"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1" name="avatar"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+}
+
+/** 浏览器端将任意比例的头像裁剪为标准 1 寸比例（90:126 object-cover），保证 DOCX 与预览比例一致 */
+async function cropAvatarForDocx(url?: string, scale = 1): Promise<string | undefined> {
+  if (!url || typeof document === "undefined" || typeof Image === "undefined") return url;
+  const img = await loadCanvasImage(url);
+  if (!img || !img.naturalWidth || !img.naturalHeight) return url;
+  const clamped = Math.min(2, Math.max(0.5, scale));
+  const targetW = Math.round(180 * clamped);
+  const targetH = Math.round(252 * clamped);
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return url;
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  const targetRatio = targetW / targetH;
+  const srcRatio = iw / ih;
+  let sx = 0, sy = 0, sw = iw, sh = ih;
+  if (srcRatio > targetRatio) {
+    sw = ih * targetRatio;
+    sx = (iw - sw) / 2;
+  } else if (srcRatio < targetRatio) {
+    sh = iw / targetRatio;
+    sy = (ih - sh) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+  return canvas.toDataURL("image/jpeg", 0.92);
 }
 
 const BORDERLESS_TBL_BORDERS =
@@ -474,7 +503,11 @@ export async function generateDocx(input: Resume): Promise<ArrayBuffer> {
 
   const primaryHex = normalizeHexColor(resume.theme.primary_color, "4F46E5");
   const bodySize = Math.round((resume.theme.font_size || 14) * 1.5);
-  const avatar = parseImageDataUrl(resume.data.avatar_url);
+  const croppedAvatarUrl = await cropAvatarForDocx(
+    resume.data.avatar_url,
+    resume.theme.avatar_scale ?? 1
+  );
+  const avatar = parseImageDataUrl(croppedAvatarUrl);
 
   const headerParagraphs: string[] = [];
   const basicVisible =
@@ -522,13 +555,13 @@ export async function generateDocx(input: Resume): Promise<ArrayBuffer> {
 
   let headerXml = headerParagraphs.join("");
   if (avatar && basicVisible) {
-    const avatarXml = buildAvatarDrawingXml(
-      "rIdAvatar",
-      resume.theme.avatar_scale ?? 1
-    );
-    headerXml = `<w:tbl><w:tblPr><w:tblW w:w="10466" w:type="dxa"/>${BORDERLESS_TBL_BORDERS}</w:tblPr><w:tblGrid><w:gridCol w:w="8200"/><w:gridCol w:w="2266"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="8200" w:type="dxa"/></w:tcPr>${
+    const avatarScale = resume.theme.avatar_scale ?? 1;
+    const avatarXml = buildAvatarDrawingXml("rIdAvatar", avatarScale, "left");
+    const avatarColW = Math.min(3400, Math.round(1800 * Math.min(2, Math.max(0.5, avatarScale))));
+    const textColW = 10466 - avatarColW;
+    headerXml = `<w:tbl><w:tblPr><w:tblW w:w="10466" w:type="dxa"/>${BORDERLESS_TBL_BORDERS}<w:tblCellMar><w:right w:w="180" type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="${avatarColW}"/><w:gridCol w:w="${textColW}"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="${avatarColW}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>${avatarXml}</w:tc><w:tc><w:tcPr><w:tcW w:w="${textColW}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>${
       headerXml || "<w:p/>"
-    }</w:tc><w:tc><w:tcPr><w:tcW w:w="2266" w:type="dxa"/></w:tcPr>${avatarXml}</w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after="60"/></w:pPr></w:p>`;
+    }</w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after="60"/></w:pPr></w:p>`;
   }
 
   const visibleBodySections = [...resume.data.sections]

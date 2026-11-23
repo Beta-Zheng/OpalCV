@@ -131,9 +131,9 @@ describe("本地文档导出", () => {
     expect(parsed.value).toContain("测试");
   });
 
-  it("DOCX 在双栏模板（academic_photo / two_column）下生成无边框双栏表格结构", async () => {
+  it("DOCX 在双栏模板（executive_sidebar / two_column）下生成无边框双栏表格结构，academic_photo 保持单栏正文", async () => {
     const r = testResume();
-    r.template_id = "academic_photo";
+    r.template_id = "executive_sidebar";
     const eduBlock = testBlock();
     eduBlock.block_id = "edu_1";
     eduBlock.title = "某某大学";
@@ -158,6 +158,13 @@ describe("本地文档导出", () => {
     const parsed = await extractRawText(mammothInput(buf));
     expect(parsed.value).toContain("教育经历");
     expect(parsed.value).toContain("工作经历");
+
+    // academic_photo 正文应与预览端保持单栏（不使用双栏分表）
+    r.template_id = "academic_photo";
+    const acadBuf = await generateDocx(r);
+    const acadZip = await JSZip.loadAsync(acadBuf);
+    const acadXml = await acadZip.file("word/document.xml")!.async("string");
+    expect(acadXml).not.toContain("<w:tbl>");
   });
 
   it("generatePdf 直接生成可下载的 %PDF-1.4 文件并可被 pdfjs 解析", async () => {
