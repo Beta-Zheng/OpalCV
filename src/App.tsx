@@ -342,7 +342,7 @@ function AppShell() {
                 '-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif',
             }}
           >
-            <Logo size={34} animated={false} flow className="shrink-0" />
+            <Logo size={36} className="shrink-0" />
             <span className="-translate-y-[1px] text-[24px] font-bold leading-none tracking-[-0.035em] text-ink-900 sm:text-[26px]">
               Opal
               <span
@@ -363,22 +363,8 @@ function AppShell() {
       {/* 桌面端（≥md）：左侧悬浮高透液态玻璃胶囊（主导航 + 全局语言/深浅切换） */}
       <nav
         aria-label="主导航"
-        className="liquid-glass-rail fixed left-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-center gap-1.5 rounded-full px-2 py-2.5 md:flex"
+        className="liquid-glass-rail fixed left-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-center gap-1 rounded-full px-1.5 py-2 md:flex"
       >
-        <button
-          type="button"
-          onClick={() => go({ name: "home" })}
-          aria-label="OpalCV 工作台"
-          className="dock-icon h-10 w-10 hover:scale-105 hover:bg-transparent"
-        >
-          <Logo size={40} />
-          <span className="dock-tip glass-tip" aria-hidden="true">
-            {copy.brandTip}
-          </span>
-        </button>
-
-        <div className="my-1 h-px w-5 bg-ink-300/55" />
-
         {nav.map((n) => (
           <DockButton
             key={n.key}
@@ -394,7 +380,7 @@ function AppShell() {
         <DockButton
           onClick={() => toggleUiLang()}
           icon={
-            <span className="text-[12px] font-semibold tracking-tight">
+            <span className="text-[11.5px] font-semibold tracking-tight">
               {uiLang === "zh" ? "中" : "EN"}
             </span>
           }
@@ -407,7 +393,7 @@ function AppShell() {
           className="dock-icon"
         >
           <span className="inline-flex transition-transform duration-300 ease-out">
-            {darkMode ? <IconSun size={18} /> : <IconMoon size={18} />}
+            {darkMode ? <IconSun size={17} /> : <IconMoon size={17} />}
           </span>
           <span className="dock-tip glass-tip" aria-hidden="true">
             {darkMode ? copy.themeToLight : copy.themeToDark}
@@ -419,7 +405,7 @@ function AppShell() {
       <MobileOrbNav actions={mobileOrbActions} />
 
       {/* 主内容区：桌面端左侧为悬浮胶囊留出舒适呼吸空间，移动端全屏零遮挡 */}
-      <main className="min-w-0 flex-1 overflow-hidden md:pl-[84px]">
+      <main className="min-w-0 flex-1 overflow-hidden md:pl-[76px]">
         <motion.div
           key={view.name}
           initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }}
