@@ -290,16 +290,28 @@ export default function Settings() {
           {t("本地存储与备份", "Local Storage & Backup")}
         </h2>
         <div className="soft-panel space-y-4 rounded-[24px] p-5 sm:p-6">
-          {/* 存储概览与备份状态 */}
+          {/* 存储概览、备份状态与主操作 */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
                 <IconDatabase size={18} />
               </span>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[15px] font-bold text-ink-900">
                     {t("本机数据备份", "Local Backup")}
+                  </span>
+                  <span
+                    className={cx(
+                      "rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums",
+                      lastBackup
+                        ? "bg-emerald-500/12 text-emerald-600"
+                        : "bg-amber-500/12 text-amber-600"
+                    )}
+                  >
+                    {lastBackup
+                      ? `${t("已备份", "Backed up")} ${new Date(lastBackup).toLocaleDateString()}`
+                      : t("尚未备份", "Not backed up")}
                   </span>
                   <InfoTip
                     content={t(
@@ -324,50 +336,38 @@ export default function Settings() {
                 </div>
               </div>
             </div>
-            <span
-              className={cx(
-                "rounded-full px-2.5 py-1 text-[11.5px] font-medium tabular-nums",
-                lastBackup
-                  ? "bg-emerald-500/12 text-emerald-600"
-                  : "bg-amber-500/12 text-amber-600"
-              )}
-            >
-              {lastBackup
-                ? `${t("上次备份", "Backed up")} ${new Date(lastBackup).toLocaleDateString()}`
-                : t("尚未备份", "Not backed up")}
-            </span>
-          </div>
 
-          {/* 主操作：完整备份 / 恢复 */}
-          <div className="flex flex-wrap gap-2.5">
-            <Btn variant="primary" className="cta-ai rounded-full px-5" onClick={backup}>
-              <IconDownload size={14} /> {t("下载完整备份", "Download Full Backup")}
-            </Btn>
-            <Btn
-              variant="outline"
-              className="rounded-full px-5"
-              onClick={() => importRef.current?.click()}
-            >
-              <IconUpload size={14} /> {t("从备份恢复", "Restore Backup")}
-            </Btn>
-            <input
-              ref={importRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onImport(f);
-                e.target.value = "";
-              }}
-            />
+            <div className="flex shrink-0 items-center gap-2">
+              <Btn variant="primary" size="sm" className="cta-ai rounded-full px-4" onClick={backup}>
+                <IconDownload size={14} /> {t("备份", "Backup")}
+              </Btn>
+              <Btn
+                variant="outline"
+                size="sm"
+                className="rounded-full px-4"
+                onClick={() => importRef.current?.click()}
+              >
+                <IconUpload size={14} /> {t("恢复", "Restore")}
+              </Btn>
+              <input
+                ref={importRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onImport(f);
+                  e.target.value = "";
+                }}
+              />
+            </div>
           </div>
 
           {/* 次级操作：单份简历独立导出 */}
           {resumes.length > 0 && (
             <div className="flex flex-wrap items-center gap-2.5 rounded-2xl bg-surface/75 px-3.5 py-2.5">
               <span className="text-[12px] font-medium text-ink-500">
-                {t("单份导出", "Single Resume")}
+                {t("单份简历", "Single Resume")}
               </span>
               <GlassSelect
                 ariaLabel={t("选择单份备份简历", "Select single resume")}
@@ -379,8 +379,9 @@ export default function Settings() {
               />
               <Btn
                 size="sm"
-                className="rounded-full"
+                className="rounded-full px-4"
                 disabled={!singleId}
+                title={t("导出为 JSON 文件", "Export as JSON")}
                 onClick={() =>
                   downloadText(
                     `opalcv-resume-${singleId}.json`,
@@ -388,7 +389,7 @@ export default function Settings() {
                   )
                 }
               >
-                {t("导出 JSON", "Export JSON")}
+                {t("导出", "Export")}
               </Btn>
             </div>
           )}
@@ -691,10 +692,10 @@ export default function Settings() {
               <Btn
                 variant="danger"
                 size="sm"
-                className="rounded-full"
+                className="rounded-full px-4"
                 onClick={() => setClearArmed(true)}
               >
-                <IconTrash size={14} /> {t("清空全部数据", "Clear All Data")}
+                <IconTrash size={14} /> {t("清空", "Clear")}
               </Btn>
             ) : (
               <div className="flex items-center gap-2">
