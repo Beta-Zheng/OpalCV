@@ -1137,7 +1137,6 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
               }
               items={[
                 { label: t("切换模板", "Switch Template"), onSelect: () => setTemplateModalOpen(true) },
-                { label: t("切换模板", "Switch Template"), onSelect: () => setTemplateModalOpen(true) },
                 { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
                 { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
                 { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
