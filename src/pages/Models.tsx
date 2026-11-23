@@ -1146,6 +1146,7 @@ export default function Models() {
 
       <Confirm
         open={confirmExternal}
+        danger
         title={t("开启外部模型？", "Enable external models?")}
         desc={
           <span>
@@ -1153,11 +1154,11 @@ export default function Models() {
               "开启后，当本地模型不可用时，简历条目内容可能被发送到你配置的外部 API 服务进行处理。",
               "When enabled and no local model is available, resume items may be sent to your configured external API. "
             )}
-            <b className="text-ink-800">{t(" 默认不会自动调用", " Never called automatically")}</b>
-            ，每次外部调用前都会明确提示。
+            <b className="text-ink-800">{t("默认不会自动调用", "Never called automatically")}</b>
+            {t("，每次外部调用前都会明确提示。", "; you will be prompted before each external call.")}
           </span>
         }
-        confirmText="我了解风险，开启"
+        confirmText={t("我了解风险，开启", "I understand, enable")}
         onConfirm={() => {
           setPrivacy({
             allowExternal: true,
