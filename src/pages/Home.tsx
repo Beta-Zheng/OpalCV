@@ -379,17 +379,27 @@ export default function Home() {
               <h2 className="mt-2 truncate text-[19px] font-bold tracking-tight text-ink-900">
                 {latest.title}
               </h2>
-              <p className="mt-1 truncate text-[13px] text-ink-500">
-                {latest.target
+              {(() => {
+                const subRole = latest.target
                   ? `${latest.target.company} · ${latest.target.job_title}`
-                  : latest.data.basic_info.title || t("目标职位待填写", "Target role pending")}
-                {" · "}
-                {templateNameLabel(
+                  : latest.data.basic_info.title || t("目标职位待填写", "Target role pending");
+                const showRole =
+                  subRole &&
+                  subRole !== latest.title &&
+                  !(latest.target && latest.title.includes(latest.target.company) && latest.title.includes(latest.target.job_title));
+                const tplName = templateNameLabel(
                   latest.template_id,
                   TEMPLATES.find((tp) => tp.template_id === latest.template_id)?.name ?? "现代单栏",
                   uiLang
-                )}
-              </p>
+                );
+                return (
+                  <p className="mt-1 truncate text-[13px] text-ink-500">
+                    {showRole
+                      ? `${subRole} · ${tplName}`
+                      : `${tplName} · ${latest.locale === "en" ? "EN" : t("中文", "ZH")}`}
+                  </p>
+                );
+              })()}
               <div className="mt-3 max-w-sm">
                 <div className="mb-1 flex items-center justify-between text-[12px] text-ink-500">
                   <span>{t("完整度", "Completeness")}</span>
