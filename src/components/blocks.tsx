@@ -244,7 +244,7 @@ function RichTextEditor({
         suppressContentEditableWarning
         data-ph={placeholder}
         className={cx(
-          "field-input min-h-[2.6rem] resize-y overflow-auto pr-16 leading-relaxed",
+          "field-input min-h-[2.5rem] overflow-auto pr-16 leading-relaxed",
           className
         )}
         onInput={emit}
@@ -298,7 +298,7 @@ export function TagInput({
     setDraft("");
   };
   return (
-    <div className="liquid-input flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line-strong/80 bg-surface px-2.5 py-1.5 shadow-2xs transition-all focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20">
       {values.map((v) => (
         <span
           key={v}
@@ -327,8 +327,8 @@ export function TagInput({
           }
         }}
         onBlur={commit}
-        placeholder={values.length ? "" : placeholder || "输入后回车添加"}
-        className="min-w-[110px] flex-1 bg-transparent text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
+        placeholder={values.length ? "+ 添加…" : placeholder || "输入后回车添加"}
+        className="min-w-[68px] flex-1 bg-transparent py-0.5 text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
       />
     </div>
   );
@@ -769,6 +769,101 @@ export function BlockCard({
     stripHtml(block.bullets[0] ?? "").slice(0, 28) ||
     t("（空白条目）", "(Empty entry)");
 
+  if (block.type === "skill_group") {
+    return (
+      <div
+        data-block-id={block.block_id}
+        tabIndex={-1}
+        className={cx(
+          "group rounded-2xl border border-line bg-subtle/40 p-3 transition-colors",
+          !block.visible && "opacity-50"
+        )}
+      >
+        <div className="mb-2 flex items-center gap-2">
+          <input
+            className="field-input min-w-0 flex-1 py-1.5 text-[13.5px] font-semibold"
+            value={block.title}
+            aria-label={t("技能组名", "Skill category")}
+            placeholder={t("技能分组名（如：核心技术）", "Category (e.g., Core Stack)")}
+            onChange={(e) =>
+              patchBlock(resume.id, section.section_id, block.block_id, {
+                title: e.target.value,
+              })
+            }
+          />
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              disabled={index === 0}
+              onClick={() => moveBlock(resume.id, section.section_id, block.block_id, "up")}
+              className="tool-btn h-7 w-7 disabled:opacity-30"
+              aria-label={t("上移", "Move Up")}
+              title={t("上移", "Move Up")}
+            >
+              <IconChevronUp size={13} />
+            </button>
+            <button
+              type="button"
+              disabled={index === total - 1}
+              onClick={() => moveBlock(resume.id, section.section_id, block.block_id, "down")}
+              className="tool-btn h-7 w-7 disabled:opacity-30"
+              aria-label={t("下移", "Move Down")}
+              title={t("下移", "Move Down")}
+            >
+              <IconChevronDown size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                patchBlock(resume.id, section.section_id, block.block_id, {
+                  visible: !block.visible,
+                })
+              }
+              className="tool-btn h-7 w-7"
+              aria-label={block.visible ? t("隐藏这段", "Hide Entry") : t("显示这段", "Show Entry")}
+              title={block.visible ? t("隐藏这段", "Hide Entry") : t("显示这段", "Show Entry")}
+            >
+              {block.visible ? <IconEye size={13} /> : <IconEyeOff size={13} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDel(true)}
+              className="tool-btn h-7 w-7 hover:bg-danger-100 hover:text-danger-600"
+              aria-label={t("删除这段", "Delete Entry")}
+              title={t("删除这段", "Delete Entry")}
+            >
+              <IconTrash size={13} />
+            </button>
+          </div>
+        </div>
+        <TagInput
+          values={block.skills}
+          onChange={(v) =>
+            patchBlock(resume.id, section.section_id, block.block_id, {
+              skills: v,
+            })
+          }
+          placeholder={t("React、TypeScript…（回车添加）", "PyTorch, JAX, TypeScript…")}
+        />
+        <Confirm
+          open={confirmDel}
+          danger
+          title={t("删除该技能组？", "Delete this skill group?")}
+          desc={t(
+            `「${preview}」将从简历中移除，此操作不可撤销。`,
+            `"${preview}" will be permanently removed from this resume.`
+          )}
+          confirmText={t("删除", "Delete")}
+          onConfirm={() => {
+            deleteBlock(resume.id, section.section_id, block.block_id);
+            setConfirmDel(false);
+          }}
+          onCancel={() => setConfirmDel(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       data-block-id={block.block_id}
@@ -1112,6 +1207,21 @@ export function BlockCard({
                       }
                     />
                   </F>
+                  <F label={t("所在城市 / 地点（可选）", "Location (Optional)")} className="@md:col-span-2">
+                    <input
+                      className="field-input"
+                      value={block.location}
+                      placeholder={t("如：杭州 / 上海 · 远程", "e.g., San Francisco / Remote")}
+                      onChange={(e) =>
+                        patchBlock(
+                          resume.id,
+                          section.section_id,
+                          block.block_id,
+                          { location: e.target.value }
+                        )
+                      }
+                    />
+                  </F>
                 </>
               )}
               {block.type === "certification" && (
@@ -1161,25 +1271,7 @@ export function BlockCard({
                 </div>
               ) : null}
 
-              {block.type === "skill_group" && (
-                <F label={t("组名", "Category")} className="sm:col-span-2">
-                  <input
-                    className="field-input"
-                    value={block.title}
-                    placeholder={t("如：核心技术", "e.g., AI & Modeling")}
-                    onChange={(e) =>
-                      patchBlock(
-                        resume.id,
-                        section.section_id,
-                        block.block_id,
-                        { title: e.target.value }
-                      )
-                    }
-                  />
-                </F>
-              )}
-              {(block.type === "skill_group" ||
-                block.type === "project_experience_item") && (
+              {block.type === "project_experience_item" && (
                 <F label={t("技能标签", "Skills / Tags")} className="sm:col-span-2">
                   <TagInput
                     values={block.skills}
@@ -1259,6 +1351,71 @@ export function BlockCard({
 
 /* ---------------- Section 卡片 ---------------- */
 
+/** 单实例个人总结直编面板：消除冗余的「1条 + 折叠头 + 添加个人总结」套娃 */
+function SummarySingletonEditor({
+  resume,
+  section,
+  block,
+  bulletStyle,
+  onBulletStyleChange,
+}: {
+  resume: Resume;
+  section: Section;
+  block: Block;
+  bulletStyle: BulletStyleKey;
+  onBulletStyleChange: (v: BulletStyleKey) => void;
+}) {
+  const { patchBlock } = useAppSlice("patchBlock");
+  const t = useT();
+  const [showPoints, setShowPoints] = useState(block.bullets.length > 0);
+  return (
+    <div data-block-id={block.block_id} className="flex flex-col gap-3 px-4 pb-4 pt-1">
+      <div className="min-w-0">
+        <RichTextEditor
+          ariaLabel={t("个人总结", "Summary")}
+          value={block.description}
+          onChange={(html) =>
+            patchBlock(resume.id, section.section_id, block.block_id, {
+              description: html,
+            })
+          }
+          placeholder={t(
+            "简要介绍经验、专长与代表成果",
+            "Brief overview of experience, strengths, and key impact"
+          )}
+        />
+      </div>
+      {!(showPoints || block.bullets.length > 0) ? (
+        <button
+          type="button"
+          className="self-start text-[12.5px] font-medium text-brand-700 hover:text-brand-800"
+          onClick={() => setShowPoints(true)}
+        >
+          + {t("添加要点列表", "Add Bullet List")}
+        </button>
+      ) : (
+        <BulletsEdit
+          label={t("总结要点", "Summary Highlights")}
+          value={block.bullets}
+          marks={block.bullet_marks}
+          onChange={(v) =>
+            patchBlock(resume.id, section.section_id, block.block_id, {
+              bullets: v,
+            })
+          }
+          onMarksChange={(m) =>
+            patchBlock(resume.id, section.section_id, block.block_id, {
+              bullet_marks: m,
+            })
+          }
+          bulletStyle={bulletStyle}
+          onBulletStyleChange={onBulletStyleChange}
+        />
+      )}
+    </div>
+  );
+}
+
 export function SectionCard({
   resume,
   section,
@@ -1308,6 +1465,7 @@ export function SectionCard({
   }, [secMenuOpen]);
   const [collapsed, setCollapsed] = useState(false);
   const t = useT();
+  const jd = useApp((s) => s.jds[resume.id]);
   const visibleBlocks = section.blocks;
   // 模块级要点样式：本模块设置优先，未设置则继承全局默认
   const bulletStyle: BulletStyleKey = resolveBulletStyle(
@@ -1362,12 +1520,20 @@ export function SectionCard({
             )}
           </h3>
         )}
-        {section.type !== "basic_info" && visibleBlocks.length > 0 && (
+        {section.type !== "basic_info" && section.type !== "summary" && visibleBlocks.length > 0 && (
           <span className="text-[12px] text-ink-400">
             {t(`${visibleBlocks.length} 条`, `${visibleBlocks.length} ${visibleBlocks.length === 1 ? "item" : "items"}`)}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          {section.type === "summary" && visibleBlocks.length === 1 && (
+            <AIActionMenu
+              hasJD={!!jd}
+              onAction={(a) =>
+                onRequestAI(section.section_id, visibleBlocks[0].block_id, a)
+              }
+            />
+          )}
           {section.type !== "basic_info" && (
             <div ref={secMenuRef} className="relative">
               <button
@@ -1478,6 +1644,14 @@ export function SectionCard({
             )}
           </button>
         </div>
+      ) : section.type === "summary" && visibleBlocks.length === 1 ? (
+        <SummarySingletonEditor
+          resume={resume}
+          section={section}
+          block={visibleBlocks[0]}
+          bulletStyle={bulletStyle}
+          onBulletStyleChange={setBulletStyle}
+        />
       ) : (
         <div className="flex flex-col gap-2 p-2.5">
           {visibleBlocks.map((b, i) => (

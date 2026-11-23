@@ -1106,6 +1106,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                         <Btn
                           size="sm"
                           variant="ghost"
+                          className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]"
                           disabled={!previewLocation}
                           onClick={() => {
                             if (previewLocation)
@@ -1116,13 +1117,14 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                               });
                           }}
                         >
-                          {t("定位预览", "Locate")}
+                          {t("定位", "Locate")}
                         </Btn>
                       )}
                       {editorMode === "layout" && (
                         <Btn
                           size="sm"
                           variant="ghost"
+                          className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]"
                           aria-pressed={previewOnLeft}
                           title={
                             previewOnLeft
@@ -1131,11 +1133,11 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                           }
                           onClick={swapPanes}
                         >
-                          {t("切换左右", "Swap Panes")}
+                          {t("换边", "Swap")}
                         </Btn>
                       )}
-                      <Btn size="sm" variant="ghost" onClick={() => { setSettingsTab('template'); setSettingsOpen(true); }}>{t("模板与版式", "Templates")}</Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => setOnePageOpen(true)}>{t("篇幅调整", "Fit Pages")}</Btn>
+                      <Btn size="sm" variant="ghost" className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]" onClick={() => { setSettingsTab('template'); setSettingsOpen(true); }}>{t("模板", "Templates")}</Btn>
+                      <Btn size="sm" variant="ghost" className="h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px]" onClick={() => setOnePageOpen(true)}>{t("调页", "Fit Pages")}</Btn>
                     </>
                   }
                   location={previewLocation}

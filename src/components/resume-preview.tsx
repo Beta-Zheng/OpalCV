@@ -138,12 +138,12 @@ export default function ResumePreview({
       <div className="sticky top-2.5 z-10 flex justify-center px-3 py-1">
         <div
           data-preview-toolbar
-          className="liquid-glass relative flex flex-wrap items-center justify-between gap-2 rounded-full px-3.5 py-1.5"
+          className="liquid-glass relative flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full px-2.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <span className="px-1 text-[11.5px] font-medium text-ink-500">
-            {t(`${pages.length} 页`, `${pages.length} ${pages.length === 1 ? "page" : "pages"}`)}
+          <span className="shrink-0 rounded-full bg-surface/85 px-2 py-0.5 text-[11px] font-semibold text-ink-600 ring-1 ring-ink-900/6">
+            {t(`${pages.length} 页`, `${pages.length}p`)}
           </span>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1" data-preview-controls>
+          <div className="flex shrink-0 flex-nowrap items-center gap-0.5" data-preview-controls>
             {tools}
             {(["fit", 0.75, 1] as const).map((value) => (
               <Btn
@@ -151,12 +151,12 @@ export default function ResumePreview({
                 variant="ghost"
                 size="sm"
                 aria-pressed={zoom === value}
-                className={`h-7 min-h-7 rounded-full px-2.5 text-[11.5px] ${value !== "fit" ? "preview-zoom-fixed" : ""} ${
+                className={`h-7 min-h-7 shrink-0 rounded-full px-2 text-[11px] ${value !== "fit" ? "preview-zoom-fixed" : ""} ${
                   zoom === value ? "glass-lens font-semibold" : ""
                 }`}
                 onClick={() => setZoom(value)}
               >
-                {value === "fit" ? t("适应窗口", "Fit") : `${value * 100}%`}
+                {value === "fit" ? t("适应", "Fit") : `${value * 100}%`}
               </Btn>
             ))}
           </div>
