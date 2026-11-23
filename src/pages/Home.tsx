@@ -817,7 +817,7 @@ export default function Home() {
             <>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
                 <div
-                  className="liquid-glass inline-flex items-center gap-0.5 rounded-full p-1"
+                  className="liquid-glass relative inline-flex items-center gap-0.5 rounded-full p-1"
                   role="radiogroup"
                   aria-label={t("求职场景", "Career stage")}
                 >
@@ -840,7 +840,7 @@ export default function Home() {
                 </div>
                 {(tab === "file" || tab === "paste") && (
                   <div
-                    className="liquid-glass inline-flex items-center gap-0.5 rounded-full p-1"
+                    className="liquid-glass relative inline-flex items-center gap-0.5 rounded-full p-1"
                     role="tablist"
                     aria-label={t("导入方式", "Import method")}
                   >
@@ -869,7 +869,7 @@ export default function Home() {
                 )}
                 {tab === "samples" && (
                   <div
-                    className="liquid-glass inline-flex items-center gap-0.5 rounded-full p-1"
+                    className="liquid-glass relative inline-flex items-center gap-0.5 rounded-full p-1"
                     role="radiogroup"
                     aria-label={t("示例语言", "Sample language")}
                   >
@@ -899,7 +899,7 @@ export default function Home() {
                 )}
                 {tab === "start" && (
                   <div
-                    className="liquid-glass inline-flex items-center gap-0.5 rounded-full p-1"
+                    className="liquid-glass relative inline-flex items-center gap-0.5 rounded-full p-1"
                     role="radiogroup"
                     aria-label={t("版式语言", "Resume language")}
                   >
@@ -1362,7 +1362,7 @@ function EmptyTypewriter() {
       <Logo size={42} motion="lively" className="shrink-0" />
       <p
         aria-live="polite"
-        className="liquid-glass min-h-[44px] w-[264px] rounded-[20px] rounded-tl-[6px] px-4 py-2.5 text-left text-[15px] font-medium leading-6 tracking-tight sm:w-[312px] sm:text-[15.5px]"
+        className="liquid-glass relative min-h-[44px] w-[264px] rounded-[20px] rounded-tl-[6px] px-4 py-2.5 text-left text-[15px] font-medium leading-6 tracking-tight sm:w-[312px] sm:text-[15.5px]"
       >
         <span className="opal-typewriter-text">{text}</span>
         <span aria-hidden="true" className="opal-caret" />
@@ -1560,11 +1560,11 @@ function InterviewProgressSection({
         </button>
       </div>
 
-      <div className="soft-panel rounded-[24px] p-4 sm:p-5">
+      <div className="soft-panel overflow-hidden rounded-[24px] p-4 sm:p-5">
         {/* 左右等重双卡（左：最近推进 / 待跟进清单；右：近 24 周 11px 紧凑热力图） */}
-        <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_auto]">
           {/* 左卡：最近跟进与活跃岗位（顶部自然对齐，无多余留白） */}
-          <div className="flex flex-col gap-2.5 rounded-[18px] bg-surface/75 p-4">
+          <div className="flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-[18px] bg-surface/75 p-4">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[12.5px] font-medium text-ink-500">
                 {uiLang === "en" ? "Active Pipeline" : "最近推进"}
@@ -1653,9 +1653,9 @@ function InterviewProgressSection({
             )}
           </div>
 
-          {/* 右卡：近 24 周紧凑热力图（固定 11px 方块） */}
-          <div className="flex flex-col justify-between gap-2.5 rounded-[18px] bg-surface/75 p-4">
-            <div className="flex items-center justify-between gap-3">
+          {/* 右卡：近 24 周紧凑热力图（固定 11px 方块，窄屏内部横向滚动防溢出） */}
+          <div className="flex min-w-0 max-w-full flex-col justify-between gap-2.5 overflow-hidden rounded-[18px] bg-surface/75 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[12.5px] font-medium text-ink-500">
                 {uiLang === "en" ? "24-Week Activity" : "近 24 周活跃度"}
               </span>
@@ -1667,7 +1667,7 @@ function InterviewProgressSection({
             </div>
 
             <div
-              className="overflow-x-auto pb-0.5"
+              className="w-full max-w-full overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               role="img"
               aria-label={
                 uiLang === "en"

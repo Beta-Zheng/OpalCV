@@ -768,7 +768,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                     aria-selected={editorMode === mode}
                     tabIndex={editorMode === mode ? 0 : -1}
                     className={cx(
-                      "editor-view-tab min-h-7 shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] transition-all",
+                      "editor-view-tab min-h-8 flex-1 shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] transition-all sm:min-h-7 sm:flex-none",
                       editorMode === mode
                         ? "glass-lens font-semibold"
                         : "text-ink-500 hover:text-ink-900"
@@ -783,7 +783,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                 ))}
             </div>
 
-            <div className="liquid-glass hidden shrink-0 items-center gap-0.5 rounded-full p-0.5 sm:inline-flex">
+            <div className="liquid-glass relative hidden shrink-0 items-center gap-0.5 rounded-full p-0.5 sm:inline-flex">
               <button
                 type="button"
                 aria-pressed={outlineOpen}
@@ -1317,7 +1317,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
                       onClickCapture={syncPreview}
                       onFocusCapture={syncPreview}
                       className={cx(
-                        "editor-content @container mx-auto flex w-full min-w-0 flex-col gap-4 pb-10",
+                        "editor-content @container mx-auto flex w-full min-w-0 flex-col gap-4 pb-24 md:pb-10",
                         editorMode === "content" && "max-w-3xl"
                       )}
                     >
@@ -1401,7 +1401,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
             {pane === "preview" && editorMode !== "content" && (
               <div
                 className={cx(
-                  "editor-preview min-w-0",
+                  "editor-preview min-w-0 pb-24 md:pb-0",
                   editorMode === "preview" && "mx-auto max-w-5xl"
                 )}
                 data-testid="live-preview"
@@ -1521,7 +1521,7 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
           <div className="flex flex-col gap-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div
-                className="liquid-glass inline-flex items-center gap-0.5 rounded-full p-1"
+                className="liquid-glass relative inline-flex items-center gap-0.5 rounded-full p-1"
                 role="radiogroup"
                 aria-label={t("模板适用语言", "Template language group")}
               >
