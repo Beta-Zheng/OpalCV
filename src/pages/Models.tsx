@@ -102,9 +102,9 @@ const MODEL_PRESETS: Array<{
 ];
 
 const TYPE_META: Record<ModelType, { label: string; cls: string }> = {
-  local: { label: "本地", cls: "bg-brand-600 text-white" },
-  external: { label: "外部", cls: "bg-seal-500 text-white" },
-  private: { label: "私有", cls: "bg-ink-800 text-paper-50" },
+  local: { label: "本地", cls: "bg-brand-500/12 text-brand-700" },
+  external: { label: "外部", cls: "bg-amber-500/12 text-amber-700" },
+  private: { label: "私有", cls: "bg-ink-900/8 text-ink-700" },
 };
 
 interface TestState {
@@ -838,7 +838,7 @@ export default function Models() {
                 </button>
               </div>
               <Btn
-                variant="primary"
+                variant={passphraseInput ? "primary" : "outline"}
                 size="sm"
                 className="shrink-0"
                 disabled={cryptoBusy || !passphraseInput}
@@ -910,8 +910,8 @@ export default function Models() {
               <div
                 key={m.id}
                 className={cx(
-                  "group rounded-[22px] p-5 transition-all",
-                  m.enabled ? "pastel-violet" : "soft-panel"
+                  "group soft-panel rounded-[22px] p-5 transition-all",
+                  m.enabled && "ring-1 ring-brand-500/25 bg-brand-50/35"
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
