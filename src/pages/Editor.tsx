@@ -629,214 +629,213 @@ export default function Editor({ resumeId, initialPanel }: { resumeId: string; i
   return (
     <div className="flex h-full flex-col">
       <header
-        className="shrink-0 bg-page/90 px-3 py-2.5 pr-24 backdrop-blur sm:px-5 md:pr-28"
+        className="shrink-0 bg-page/90 px-3 py-2 pr-24 backdrop-blur sm:px-5 md:pr-28"
         data-testid="editor-header"
       >
-        <div className="flex items-center gap-2">
-          <button
-            className="tool-btn shrink-0 rounded-full"
-            aria-label="返回工作台"
-            onClick={() => app.go({ name: "home" })}
-          >
-            <IconChevronLeft size={18} />
-          </button>
-          <input
-            aria-label="简历标题"
-            title={resume.title}
-            className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[16px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300"
-            value={resume.title}
-            onChange={(e) => app.renameResume(resumeId, e.target.value)}
-          />
-          <div className="hidden shrink-0 sm:block">
-            <SaveIndicator />
-          </div>
-          <div className="shrink-0 sm:hidden"><SaveIndicator compact /></div>
-          <div className="hidden items-center gap-0.5 sm:inline-flex">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 xl:flex-nowrap">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 xl:flex-initial">
             <button
-              type="button"
-              disabled={!historyMeta.canUndo}
-              onClick={handleUndo}
-              title={t("撤销 (Ctrl+Z)", "Undo (Ctrl+Z)")}
-              aria-label={t("撤销", "Undo")}
-              className="tool-btn rounded-full"
+              className="tool-btn shrink-0 rounded-full"
+              aria-label="返回工作台"
+              onClick={() => app.go({ name: "home" })}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M9 14 4 9l5-5" />
-                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
-              </svg>
+              <IconChevronLeft size={18} />
             </button>
-            <button
-              type="button"
-              disabled={!historyMeta.canRedo}
-              onClick={handleRedo}
-              title={t("重做 (Ctrl+Shift+Z)", "Redo (Ctrl+Shift+Z)")}
-              aria-label={t("重做", "Redo")}
-              className="tool-btn rounded-full"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="m15 14 5-5-5-5" />
-                <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
-              </svg>
-            </button>
+            <input
+              aria-label="简历标题"
+              title={resume.title}
+              className="min-w-0 flex-1 truncate rounded-lg border-0 bg-transparent px-1.5 py-0.5 text-[15.5px] font-bold text-ink-900 outline-none focus:bg-subtle focus:ring-1 focus:ring-brand-300 xl:w-44 xl:flex-none"
+              value={resume.title}
+              onChange={(e) => app.renameResume(resumeId, e.target.value)}
+            />
+            <div className="hidden shrink-0 sm:block">
+              <SaveIndicator />
+            </div>
+            <div className="shrink-0 sm:hidden"><SaveIndicator compact /></div>
           </div>
-          <div className="hidden sm:contents"><Btn variant="ghost" className="rounded-full" onClick={() => setTool("versions")}>{t("历史版本", "History")}</Btn></div>
-          <Btn
-            variant="ghost"
-            className="shrink-0 rounded-full"
-            onClick={() => setSettingsOpen(true)}
+
+          <div
+            className="liquid-glass relative order-3 flex w-full items-center justify-center rounded-full p-0.5 sm:order-none sm:w-auto xl:mx-auto"
+            role="tablist"
+            onKeyDown={navigateTabs}
+            aria-label={t("编辑视图", "Editor view")}
           >
-            <span className="hidden sm:inline">{t("模板与设置", "Template & Style")}</span><span className="sm:hidden">{t("设置", "Style")}</span>
-          </Btn>
-          <Btn
-            variant="primary"
-            className="cta-ai shrink-0 rounded-full"
-            onClick={() => setPreviewOpen(true)}
-          >
-            {t("导出", "Export")}
-          </Btn>
+            {(
+              [
+                ["content", t("写内容", "Write")],
+                ["layout", t("内容与预览", "Split")],
+                ["preview", t("仅预览", "Preview")],
+              ] as const
+            )
+              .filter(([mode]) => mode !== "layout" || canSplit)
+              .map(([mode, label]) => (
+                <button
+                  key={mode}
+                  role="tab"
+                  aria-selected={editorMode === mode}
+                  tabIndex={editorMode === mode ? 0 : -1}
+                  className={cx(
+                    "editor-view-tab min-h-7 rounded-full px-3 py-1 text-[12.5px] transition-all",
+                    editorMode === mode
+                      ? "glass-lens font-semibold"
+                      : "text-ink-500 hover:text-ink-900"
+                  )}
+                  onClick={() => {
+                    setEditorMode(mode);
+                    closeAllPanels();
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+          </div>
+
+          <div className="hidden items-center gap-1 text-[12px] sm:inline-flex">
+            <Btn
+              variant="ghost"
+              size="sm"
+              aria-pressed={outlineOpen}
+              className={cx(
+                "px-2.5",
+                outlineOpen && "bg-brand-50 text-brand-700"
+              )}
+              onClick={toggleOutline}
+            >
+              <IconBookOpen size={14} />
+              {t("目录", "Outline")}
+            </Btn>
+            <Btn
+              variant="ghost"
+              size="sm"
+              aria-pressed={rightOpen && panelTab === "ai"}
+              className={cx(
+                "px-2.5",
+                rightOpen && panelTab === "ai" && "bg-brand-50 text-brand-700"
+              )}
+              onClick={() => openRightPanel("ai", true)}
+            >
+              <IconPanelRight size={14} />
+              {t("建议", "AI Polish")}
+              {rightOpen && panelTab === "ai" && <span className="sp-dot" aria-hidden="true" />}
+            </Btn>
+            <Btn
+              size="sm"
+              aria-pressed={!!resume.target && rightOpen && panelTab === "jd"}
+              className={cx(
+                "px-2.5",
+                !!resume.target && rightOpen && panelTab === "jd" && "border-brand-400 bg-brand-50 text-brand-700"
+              )}
+              onClick={() => {
+                if (!resume.target) setTool("target");
+                else openRightPanel("jd", true);
+              }}
+            >
+              {resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
+            </Btn>
+
+            <EditorActionMenu
+              label={t("辅助工具", "Tools")}
+              ariaLabel={t("辅助工具", "Tools")}
+              items={[
+                { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
+                { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
+                { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
+                {
+                  label: showSteps ? t("隐藏流程进度", "Hide Workflow Bar") : t("显示流程进度", "Show Workflow Bar"),
+                  onSelect: () => setShowSteps((v) => !v),
+                },
+              ]}
+            />
+          </div>
+
+          <div className="ml-auto flex shrink-0 items-center gap-1 xl:ml-0">
+            <div className="hidden items-center gap-0.5 sm:inline-flex">
+              <button
+                type="button"
+                disabled={!historyMeta.canUndo}
+                onClick={handleUndo}
+                title={t("撤销 (Ctrl+Z)", "Undo (Ctrl+Z)")}
+                aria-label={t("撤销", "Undo")}
+                className="tool-btn rounded-full"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 14 4 9l5-5" />
+                  <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                disabled={!historyMeta.canRedo}
+                onClick={handleRedo}
+                title={t("重做 (Ctrl+Shift+Z)", "Redo (Ctrl+Shift+Z)")}
+                aria-label={t("重做", "Redo")}
+                className="tool-btn rounded-full"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m15 14 5-5-5-5" />
+                  <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+                </svg>
+              </button>
+            </div>
+            <div className="hidden sm:contents">
+              <Btn variant="ghost" size="sm" className="rounded-full px-2.5" onClick={() => setTool("versions")}>
+                {t("历史版本", "History")}
+              </Btn>
+            </div>
+            <Btn
+              variant="ghost"
+              size="sm"
+              className="shrink-0 rounded-full px-2.5"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <span className="hidden sm:inline">{t("模板与设置", "Template & Style")}</span>
+              <span className="sm:hidden">{t("设置", "Style")}</span>
+            </Btn>
+            <EditorActionMenu
+              label={t("更多", "More")}
+              ariaLabel={t("编辑工具", "Editor tools")}
+              align="right"
+              className="sm:hidden"
+              items={[
+                { label: t("内容目录", "Outline"), onSelect: toggleOutline },
+                {
+                  label: resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job"),
+                  onSelect: () => {
+                    if (!resume.target) setTool("target");
+                    else openRightPanel("jd");
+                  },
+                },
+                {
+                  label: t("内容建议", "AI Polish"),
+                  onSelect: () => openRightPanel("ai"),
+                },
+                { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
+                { label: t("篇幅调整", "Fit Pages"), onSelect: () => setOnePageOpen(true) },
+                { label: t("历史版本", "History"), onSelect: () => setTool("versions") },
+                { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
+                { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
+                ...(parentResume
+                  ? [
+                      { label: t("主简历更新", "Sync Master"), onSelect: () => setSourceUpdateOpen(true) },
+                      {
+                        label: t("查看主简历", "Open Master"),
+                        onSelect: () => app.go({ name: "editor", resumeId: parentResume.id }),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+            <Btn
+              variant="primary"
+              size="sm"
+              className="cta-ai shrink-0 rounded-full px-3.5"
+              onClick={() => setPreviewOpen(true)}
+            >
+              {t("导出", "Export")}
+            </Btn>
+          </div>
         </div>
       </header>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 bg-page/90 px-3 pb-2.5 pt-0.5 text-[12px] sm:px-5">
-        <div
-          className="liquid-glass relative flex rounded-full p-1"
-          role="tablist"
-          onKeyDown={navigateTabs}
-          aria-label={t("编辑视图", "Editor view")}
-        >
-          {(
-            [
-              ["content", t("写内容", "Write")],
-              ["layout", t("内容与预览", "Split")],
-              ["preview", t("仅预览", "Preview")],
-            ] as const
-          )
-            .filter(([mode]) => mode !== "layout" || canSplit)
-            .map(([mode, label]) => (
-              <button
-                key={mode}
-                role="tab"
-                aria-selected={editorMode === mode}
-                tabIndex={editorMode === mode ? 0 : -1}
-                className={cx(
-                  "editor-view-tab min-h-8 rounded-full px-3.5 py-1 text-[13px] transition-all",
-                  editorMode === mode
-                    ? "glass-lens font-semibold"
-                    : "text-ink-500 hover:text-ink-900"
-                )}
-                onClick={() => {
-                  setEditorMode(mode);
-                  closeAllPanels();
-                }}
-              >
-                {label}
-              </button>
-            ))}
-        </div>
-        <div className="hidden sm:contents">
-        <Btn
-          variant="ghost"
-          size="sm"
-          aria-pressed={outlineOpen}
-          className={cx(
-            "hidden sm:inline-flex",
-            outlineOpen && "bg-brand-50 text-brand-700"
-          )}
-          onClick={toggleOutline}
-        >
-          <IconBookOpen size={14} />
-          {t("目录", "Outline")}
-        </Btn>
-        <Btn
-          variant="ghost"
-          size="sm"
-          aria-pressed={rightOpen && panelTab === "ai"}
-          className={cx(
-            "hidden sm:inline-flex",
-            rightOpen && panelTab === "ai" && "bg-brand-50 text-brand-700"
-          )}
-          onClick={() => openRightPanel("ai", true)}
-        >
-          <IconPanelRight size={14} />
-          {t("建议", "AI Polish")}
-          {rightOpen && panelTab === "ai" && <span className="sp-dot" aria-hidden="true" />}
-        </Btn>
-        <Btn
-          size="sm"
-          aria-pressed={!!resume.target && rightOpen && panelTab === "jd"}
-          className={cx(
-            "hidden sm:inline-flex",
-            !!resume.target && rightOpen && panelTab === "jd" && "border-brand-400 bg-brand-50 text-brand-700"
-          )}
-          onClick={() => {
-            if (!resume.target) setTool("target");
-            else openRightPanel("jd", true);
-          }}
-        >
-          {resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job")}
-        </Btn>
-
-        <EditorActionMenu
-          label={t("辅助工具", "Tools")}
-          ariaLabel={t("辅助工具", "Tools")}
-          className="hidden sm:block"
-          items={[
-            { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
-            { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
-            { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
-          ]}
-        />
-
-        </div>
-        <EditorActionMenu
-          label={t("更多", "More")}
-          ariaLabel={t("编辑工具", "Editor tools")}
-          align="right"
-          className="ml-auto sm:hidden"
-          items={[
-            { label: t("内容目录", "Outline"), onSelect: toggleOutline },
-            {
-              label: resume.target ? t("岗位要求", "Target JD") : t("创建岗位版本", "Tailor for Job"),
-              onSelect: () => {
-                if (!resume.target) setTool("target");
-                else openRightPanel("jd");
-              },
-            },
-            {
-              label: t("内容建议", "AI Polish"),
-              onSelect: () => openRightPanel("ai"),
-            },
-            { label: t("批量优化模块", "Batch Polish"), onSelect: () => setTool("module") },
-            { label: t("篇幅调整", "Fit Pages"), onSelect: () => setOnePageOpen(true) },
-            { label: t("历史版本", "History"), onSelect: () => setTool("versions") },
-            { label: t("求职信", "Cover Letter"), onSelect: () => setTool("letter") },
-            { label: t("导入原文", "Source Text"), onSelect: () => setTool("source") },
-            ...(parentResume
-              ? [
-                  { label: t("主简历更新", "Sync Master"), onSelect: () => setSourceUpdateOpen(true) },
-                  {
-                    label: t("查看主简历", "Open Master"),
-                    onSelect: () => app.go({ name: "editor", resumeId: parentResume.id }),
-                  },
-                ]
-              : []),
-          ]}
-        />
-        <button
-          type="button"
-          onClick={() => setShowSteps((v) => !v)}
-          className="ml-auto hidden rounded-full px-2.5 py-1 text-[12px] text-ink-500 transition-colors hover:bg-subtle hover:text-ink-900 sm:inline-flex sm:items-center sm:gap-1.5"
-          title={t(`基础字段完成度 ${completionPct}%（点击展开流程进度）`, `Completeness ${completionPct}% (click for workflow)`)}
-        >
-          <span>
-            {warningCount
-              ? t(`${warningCount} 项待检查`, `${warningCount} to review`)
-              : t("基础字段已填写", "Ready")}
-            {editorMode !== "content" && livePages.length
-              ? ` · ${livePages.length} ${t("页", livePages.length > 1 ? "pages" : "page")}`
-              : ""}
-          </span>
-        </button>
-      </div>
       {resume.archived_at && (
         <p className="px-4 py-2 text-[12px] text-ink-500">
           {t("这份简历已归档，投递历史和快照仍保留；可在工作台的已归档列表恢复。", "This resume is archived. Snapshots and applications are preserved.")}
