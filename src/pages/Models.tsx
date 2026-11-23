@@ -101,12 +101,6 @@ const MODEL_PRESETS: Array<{
   },
 ];
 
-const TYPE_META: Record<ModelType, { label: string; cls: string }> = {
-  local: { label: "本地", cls: "bg-brand-500/12 text-brand-700" },
-  external: { label: "外部", cls: "bg-amber-500/12 text-amber-700" },
-  private: { label: "私有", cls: "bg-ink-900/8 text-ink-700" },
-};
-
 interface TestState {
   running?: boolean;
   ok?: boolean;
@@ -909,35 +903,31 @@ export default function Models() {
             return (
               <div
                 key={m.id}
-                className={cx(
-                  "group soft-panel rounded-[22px] p-5 transition-all",
-                  m.enabled && "ring-1 ring-brand-500/25 bg-brand-50/35"
-                )}
+                className="group soft-panel flex flex-col justify-between gap-3.5 rounded-[22px] p-5 transition-all hover:shadow-md"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="truncate text-[15px] font-bold text-ink-900">
-                        {providerDisplayName(m.name, uiLang).replace(/（默认关闭）|\s*\(Off by Default\)/g, "").trim()}
-                      </h3>
-                      <span className={cx("chip rounded-full px-2.5", TYPE_META[m.type].cls)}>
-                        {m.type === "local"
-                          ? t("本地", "Local")
-                          : m.type === "external"
-                            ? t("外部", "External")
-                            : t("私有", "Private")}
-                      </span>
-                    </div>
-                    <p
-                      className="mt-1 truncate font-mono text-[12px] text-ink-500"
-                      title={m.base_url}
-                    >
-                      {m.model_name} · {m.base_url}
-                    </p>
-                  </div>
-                  <Toggle
-                    checked={m.enabled}
-                    onChange={() => {
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={cx(
+                      "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold",
+                      m.type === "local"
+                        ? "bg-sky-500/12 text-sky-700"
+                        : m.type === "external"
+                          ? "bg-amber-500/15 text-amber-700"
+                          : "bg-ink-900/8 text-ink-700"
+                    )}
+                  >
+                    {m.protocol === "ollama"
+                      ? t("Ollama · 本地", "Ollama · Local")
+                      : m.type === "local"
+                        ? t(`${providerDisplayName(m.name, uiLang)} · 本地`, `${providerDisplayName(m.name, uiLang)} · Local`)
+                        : t("OpenAI 兼容 · 外部", "OpenAI Compatible · External")}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={m.enabled}
+                    aria-label={t("启用或停用模型", "Toggle model")}
+                    onClick={() => {
                       toggleModel(m.id);
                       toast(
                         "info",
@@ -947,8 +937,30 @@ export default function Models() {
                         )
                       );
                     }}
-                    label={t("启用模型", "Enable model")}
-                  />
+                    className={cx(
+                      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium transition-colors",
+                      m.enabled
+                        ? "text-emerald-600 hover:bg-emerald-500/10"
+                        : "text-ink-400 hover:bg-ink-900/5 hover:text-ink-600"
+                    )}
+                  >
+                    {m.enabled && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                    )}
+                    <span>{m.enabled ? t("就绪", "Ready") : t("未启用", "Off")}</span>
+                  </button>
+                </div>
+
+                <div className="min-w-0">
+                  <h3
+                    className="truncate text-[16px] font-bold tracking-tight text-ink-900"
+                    title={`${providerDisplayName(m.name, uiLang).replace(/（默认关闭）|\s*\(Off by Default\)/g, "").trim()} · ${m.base_url}`}
+                  >
+                    {m.model_name}
+                  </h3>
+                  <p className="mt-0.5 truncate text-[11.5px] text-ink-400" title={m.base_url}>
+                    {providerDisplayName(m.name, uiLang).replace(/（默认关闭）|\s*\(Off by Default\)/g, "").trim()} · {m.base_url}
+                  </p>
                 </div>
                 {testRes && !testRes.running && (
                   <div
@@ -1008,16 +1020,17 @@ export default function Models() {
                     </div>
                   </div>
                 )}
-                <div className="mt-3 flex items-center gap-1.5 border-t border-ink-100 pt-2.5">
-                  <Btn
-                    variant="outline"
-                    className="h-7 px-2.5 text-[11.5px]"
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-surface px-3.5 text-[12px] font-medium text-ink-700 shadow-xs ring-1 ring-ink-900/6 transition-all hover:bg-surface/90 hover:text-ink-900 disabled:opacity-50"
                     onClick={() => runTest(m)}
                     disabled={testRes?.running}
                   >
-                    <IconZap size={12} /> {testRes?.running ? t("测试中…", "Testing…") : t("测试连接", "Test Connection")}
-                  </Btn>
-                  <div className="ml-auto flex gap-1 opacity-65 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                    <IconZap size={13} className="text-amber-500" />
+                    <span>{testRes?.running ? t("测试中…", "Testing…") : t("测试连接", "Test Connection")}</span>
+                  </button>
+                  <div className="ml-auto flex gap-1 opacity-50 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <button
                       className="tool-btn"
                       onClick={() => {
