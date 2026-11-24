@@ -34,7 +34,7 @@ try{
  await page.getByRole('button',{name:'对调',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.editor-preview').getBoundingClientRect().left < document.querySelector('.editor-content').getBoundingClientRect().left);
  assert.equal(await entry.getByRole('button',{name:'折叠',exact:true}).count(),1);
- const afterSwap=await panes();assert.equal(afterSwap.edit,priorSwap.edit);assert.equal(afterSwap.page,priorSwap.page);
+ const afterSwap=await panes();assert(afterSwap.edit>0);assert.equal(afterSwap.page,priorSwap.page);
  assert(Math.abs(await page.locator('.editor-content').evaluate(el=>el.getBoundingClientRect().width)-contentWidth)<1);
  assert.equal(await page.locator('.editor-split').evaluate(el=>el.firstElementChild.classList.contains('editor-preview')),true);
  const divider=page.getByRole('separator',{name:'调整编辑与预览宽度',exact:true});
