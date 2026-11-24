@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <a href="./README.md">English</a> · <strong>简体中文</strong>
+    <a href="./README.md">English</a> · <strong>简体中文</strong> · <a href="https://beta-zheng.github.io/OpalCV/"><strong>🚀 在线体验</strong></a>
   </p>
 
   <p>
@@ -95,6 +95,18 @@ pnpm build
 3. **配置 AI 模型（可选）**：前往 **模型与隐私** 接入本机 Ollama 或自定义 OpenAI 兼容 API；如需保护本机保存的外部 API Key，可设置本地主密码开启 AES-GCM 加密。
 4. **导出与投递追踪**：点击 **导出** 生成打印级 PDF、DOCX 或 Markdown；前往 **投递记录** 绑定简历快照，在卡片 / 流水线 / 甘特视图中持续跟进每一轮面试。
 5. **数据管理与迁移**：在 **数据管理** 中随时一键备份 / 恢复全量 JSON 数据，或配置 WebDAV / GitHub 私有 Gist 端到端加密同步。
+
+---
+
+## 🔄 端到端加密同步（可选）
+
+所有编辑实时自动保存于本机 `IndexedDB`；云端同步为**纯手动触发**，上传前先在浏览器本地完成 **Web Crypto AES-GCM 加密**，Token 与同步密码仅驻留当前会话内存不落盘。
+
+- **GitHub 私有 Gist 同步**：
+  1. 在 GitHub 生成 Personal Access Token：选 **Classic PAT**（仅勾选 `gist` 权限）或 **Fine-grained PAT**（开启 `Account permissions → Gists: Read and write`）。
+  2. 进入 **数据管理 → 端到端加密同步 → GitHub Gist**，填入 Token、设置同步加密密码；首次上传将 **Gist ID 留空**，点击 **「加密上传」** 即自动创建私有 `opalcv-backup.enc.json` 并记住 ID。
+  3. 换设备恢复时，填入 Token、该 **Gist ID** 与同一同步密码，点击 **「下载并恢复」** 即可本地解密还原。
+- **WebDAV 同步**：填入任意标准 WebDAV 地址、账号密码及同步加密密码，同样以 AES-GCM 密文存取。
 
 ---
 

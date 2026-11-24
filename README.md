@@ -7,7 +7,7 @@
   </p>
 
   <p>
-    <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a>
+    <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a> · <a href="https://beta-zheng.github.io/OpalCV/"><strong>🚀 Live Demo</strong></a>
   </p>
 
   <p>
@@ -95,6 +95,18 @@ The production build outputs pure static files that can be hosted anywhere (**Gi
 3. **Connect AI (Optional)**: Open **Models & Privacy** to connect local Ollama or an OpenAI-compatible API. Optionally set a local master passphrase to encrypt saved API keys with Web Crypto AES-GCM.
 4. **Export & Track**: Click **Export** for print-ready PDF, DOCX, or Markdown. Head to **Applications** to pin exported snapshots and track every interview round across Cards, Pipeline, and Gantt views.
 5. **Backup & Sync**: Use **Data Management** to export/restore full JSON backups or set up encrypted WebDAV / private GitHub Gist sync.
+
+---
+
+## 🔄 Encrypted Cloud Sync (Optional)
+
+All edits auto-save locally to `IndexedDB`. Cloud sync is **manual and end-to-end encrypted (Web Crypto AES-GCM)** in your browser before upload — tokens and sync passphrases stay in memory only and are never written to disk.
+
+- **GitHub Secret Gist**:
+  1. Generate a GitHub Personal Access Token — either a **Classic PAT** with only the `gist` scope, or a **Fine-grained PAT** with `Account permissions → Gists: Read and write`.
+  2. Open **Data Management → Encrypted Sync → GitHub Gist**, paste your token, leave **Gist ID** empty on first upload (auto-creates a private `opalcv-backup.enc.json`), set a sync passphrase, and click **Encrypt & Upload**.
+  3. On another device, enter your token, the saved **Gist ID**, and the same passphrase, then click **Download & Restore**.
+- **WebDAV**: Point to any standard WebDAV URL with your credentials and sync passphrase using the same AES-GCM client-side encryption.
 
 ---
 
