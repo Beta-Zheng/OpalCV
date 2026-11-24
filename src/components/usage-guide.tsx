@@ -206,9 +206,7 @@ export default function UsageGuide() {
                 {GUIDE_STEPS[step].text}
               </span>
             </div>
-            <div className="soft-panel overflow-hidden rounded-[20px] p-3">
-              <GuideDemo key={run} step={step} />
-            </div>
+            <GuideDemo key={run} step={step} />
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-2">
