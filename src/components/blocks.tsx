@@ -244,7 +244,7 @@ function RichTextEditor({
         suppressContentEditableWarning
         data-ph={placeholder}
         className={cx(
-          "field-input min-h-[2.5rem] overflow-auto pr-16 leading-relaxed",
+          "field-input min-h-[2.5rem] overflow-auto break-words pr-12 leading-relaxed sm:pr-16",
           className
         )}
         onInput={emit}
@@ -511,7 +511,7 @@ function BulletsEdit({
     onMarksChange(next);
   };
   return (
-    <div className="sm:col-span-2 min-w-0">
+    <div className="col-span-full min-w-0">
       <div className="mb-1 flex items-center gap-2">
         <span className="field-label mb-0">{resolvedLabel}</span>
         <div className="ml-auto">
@@ -560,6 +560,7 @@ function BulletsEdit({
                   ariaLabel={`${t("成果", "Bullet")} ${i + 1}`}
                   value={b}
                   onChange={(html) => update(i, html)}
+                  className="min-h-[4.25rem] max-h-[8.5rem] overflow-y-auto sm:min-h-[3.25rem] sm:max-h-[10rem]"
                   placeholder={
                     isAchievements
                       ? t("做了什么，带来了什么结果", "What you did and the measurable impact")
@@ -1116,12 +1117,12 @@ export function BlockCard({
                       }
                     />
                   </F>
-                  <details className="sm:col-span-2" open={block.subtitles?.length ? true : undefined}>
+                  <details className="col-span-full" open={block.subtitles?.length ? true : undefined}>
                     <summary className="cursor-pointer text-[12px] text-ink-500">
                       {t("更多补充信息", "More Subtitles")}
                     </summary>
                   {(block.subtitles ?? []).length > 0 && (
-                    <div className="sm:col-span-2 flex flex-col gap-1.5">
+                    <div className="col-span-full flex flex-col gap-1.5">
                       {block.subtitles!.map((st, i) => (
                         <div key={i} className="flex items-center gap-1.5">
                           <span
@@ -1173,7 +1174,7 @@ export function BlockCard({
                   )}
                   <button
                     type="button"
-                    className="sm:col-span-2 self-start inline-flex items-center gap-1 text-[12px] font-medium text-brand-600 transition hover:text-brand-700"
+                    className="col-span-full self-start inline-flex items-center gap-1 text-[12px] font-medium text-brand-600 transition hover:text-brand-700"
                     onClick={() =>
                       patchBlock(
                         resume.id,
@@ -1258,7 +1259,7 @@ export function BlockCard({
                 </F>
               )}
 
-              <div className="sm:col-span-2 min-w-0">
+              <div className="col-span-full min-w-0">
                 <span className="field-label">
                   {section.type === "summary"
                     ? t("个人总结", "Summary")
@@ -1308,7 +1309,7 @@ export function BlockCard({
               </div>
 
               {block.type === "project_experience_item" && (
-                <F label={t("技能标签", "Skills / Tags")} className="sm:col-span-2">
+                <F label={t("技能标签", "Skills / Tags")} className="col-span-full">
                   <TagInput
                     values={block.skills}
                     onChange={(v) =>
@@ -1330,7 +1331,7 @@ export function BlockCard({
                 </button>
               )}
               {((block.type === "summary" || block.type === "custom_text") && !(showPoints || block.bullets.length > 0)) && (
-                <button className="sm:col-span-2 text-left text-[13px] text-brand-700" onClick={() => setShowPoints(true)}>
+                <button className="col-span-full text-left text-[13px] text-brand-700" onClick={() => setShowPoints(true)}>
                   {t("添加要点列表", "Add Bullet List")}
                 </button>
               )}
@@ -1880,7 +1881,7 @@ function BasicInfoEditor({ resume }: { resume: Resume }) {
         </>
       )}
       {/* 自定义信息项：固定六项之外的补充字段（如 期望薪资 / 政治面貌），随联系方式一行渲染 */}
-      <div className="sm:col-span-2">
+      <div className="col-span-full">
         <div className="mb-1 flex items-center justify-between">
           <span className="field-label">{t("补充信息", "Additional Info")}</span>
           <button
