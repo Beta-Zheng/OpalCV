@@ -310,32 +310,38 @@ export function fontStack(key?: FontKey): string {
   return FONT_STACKS[key ?? "sans"];
 }
 
-/** 三种密度对应的 CSS 变量（间距 + 行高 + 页边距），便于一页简历调节篇幅 */
+/** 三种密度对应的 CSS 变量（层级间距：要点 < 标题到描述 < 描述到要点 < 条目间 < 模块间） */
 export const DENSITY_VARS: Record<DensityKey, Record<string, string>> = {
   compact: {
-    "--sec-gap": "0.42rem",
-    "--entry-gap": "0.2rem",
-    "--bullet-gap": "0.08rem",
-    "--lh": "1.32",
-    "--head-gap": "0.25rem",
+    "--sec-gap": "0.72rem",
+    "--entry-gap": "0.48rem",
+    "--list-gap": "0.26rem",
+    "--desc-gap": "0.18rem",
+    "--bullet-gap": "0.1rem",
+    "--lh": "1.34",
+    "--head-gap": "0.32rem",
     "--page-pad-x": "2.35rem",
     "--page-pad-y": "1.6rem",
   },
   medium: {
-    "--sec-gap": "0.56rem",
-    "--entry-gap": "0.26rem",
-    "--bullet-gap": "0.12rem",
-    "--lh": "1.38",
-    "--head-gap": "0.35rem",
+    "--sec-gap": "1.05rem",
+    "--entry-gap": "0.72rem",
+    "--list-gap": "0.38rem",
+    "--desc-gap": "0.26rem",
+    "--bullet-gap": "0.16rem",
+    "--lh": "1.42",
+    "--head-gap": "0.48rem",
     "--page-pad-x": "2.55rem",
     "--page-pad-y": "1.85rem",
   },
   loose: {
-    "--sec-gap": "1.45rem",
-    "--entry-gap": "0.85rem",
-    "--bullet-gap": "0.42rem",
+    "--sec-gap": "1.55rem",
+    "--entry-gap": "1.1rem",
+    "--list-gap": "0.62rem",
+    "--desc-gap": "0.48rem",
+    "--bullet-gap": "0.38rem",
     "--lh": "1.75",
-    "--head-gap": "0.95rem",
+    "--head-gap": "0.9rem",
     "--page-pad-x": "3.3rem",
     "--page-pad-y": "3.1rem",
   },

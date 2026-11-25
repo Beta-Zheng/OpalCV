@@ -58,10 +58,20 @@ describe("resolveBulletStyle：模块级要点样式继承", () => {
   });
 });
 
-describe("densityVars：三档密度均提供要点行距变量", () => {
+describe("densityVars：三档密度均提供要点行距变量与明确间距层级", () => {
   it("compact / medium / loose 都含 --bullet-gap 且递增", () => {
     const g = (k: "compact" | "medium" | "loose") => parseFloat(densityVars(k)["--bullet-gap"]);
     expect(g("compact")).toBeLessThan(g("medium"));
     expect(g("medium")).toBeLessThan(g("loose"));
+  });
+
+  it("每档密度满足 bullet < desc < list < entry < sec 的清晰排版层级", () => {
+    for (const k of ["compact", "medium", "loose"] as const) {
+      const v = densityVars(k);
+      expect(parseFloat(v["--bullet-gap"])).toBeLessThan(parseFloat(v["--desc-gap"]));
+      expect(parseFloat(v["--desc-gap"])).toBeLessThan(parseFloat(v["--list-gap"]));
+      expect(parseFloat(v["--list-gap"])).toBeLessThan(parseFloat(v["--entry-gap"]));
+      expect(parseFloat(v["--entry-gap"])).toBeLessThan(parseFloat(v["--sec-gap"]));
+    }
   });
 });
