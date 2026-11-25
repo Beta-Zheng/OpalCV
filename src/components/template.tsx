@@ -240,7 +240,7 @@ function BulletList({
     );
   };
 
-  const cls = "mt-[var(--bullet-gap)] flex list-none flex-col gap-[var(--bullet-gap)] pl-0";
+  const cls = "mt-[var(--list-gap)] flex list-none flex-col gap-[var(--bullet-gap)] pl-0";
   if (bulletStyle === "ordered") {
     return <ol className={cls}>{pairs.map((p) => renderItem(p))}</ol>;
   }
@@ -288,7 +288,7 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
           </div>
         )}
         {block.description && (
-          <p className="mt-[var(--bullet-gap)] whitespace-pre-line text-[0.92em] leading-[var(--lh)] text-[#222]">
+          <p className="mt-[var(--desc-gap)] whitespace-pre-line text-[0.91em] leading-[var(--lh)] text-[#333]">
             {renderRich(block.description)}
           </p>
         )}
@@ -296,7 +296,7 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
           <BulletList bullets={bullets} marks={block.bullet_marks} bulletStyle={bulletStyle} color={color} isATS />
         )}
         {block.skills.length > 0 && (
-          <p className="mt-[var(--bullet-gap)] text-[0.86em] text-[#333]">
+          <p className="mt-[var(--list-gap)] text-[0.86em] text-[#333]">
             <span className="font-semibold text-[#111]">Tech: </span>
             {block.skills.join(", ")}
           </p>
@@ -341,16 +341,16 @@ function EntryBody({ block, style }: { block: Block; style: TStyle }) {
         </p>
       )}
       {block.description && (
-        <p className={cx("mt-[var(--bullet-gap)] whitespace-pre-line text-[0.92em] leading-[var(--lh)]", isATS ? "text-[#222]" : "text-ink-700")}>{renderRich(block.description)}</p>
+        <p className={cx("mt-[var(--desc-gap)] whitespace-pre-line text-[0.91em] leading-[var(--lh)]", isATS ? "text-[#333]" : "text-ink-600")}>{renderRich(block.description)}</p>
       )}
       {bullets.length > 0 && <BulletList bullets={bullets} marks={block.bullet_marks} bulletStyle={bulletStyle} color={color} isATS={isATS} />}
       {block.skills.length > 0 &&
         (skill === "text" ? (
-          <p className="mt-[var(--bullet-gap)] text-[0.9em]" style={{ color: isATS ? "#333" : undefined }}>
+          <p className="mt-[var(--list-gap)] text-[0.9em]" style={{ color: isATS ? "#333" : undefined }}>
             {block.skills.join(style.variant === "latex" ? ", " : "  ·  ")}
           </p>
         ) : (
-          <div className="mt-[var(--bullet-gap)] flex flex-wrap gap-1">
+          <div className="mt-[var(--list-gap)] flex flex-wrap gap-1">
             {block.skills.map((sk) => (
               <span
                 key={sk}
