@@ -150,6 +150,62 @@ export function IconNavSettings({ size = 20, className = "" }: { size?: number; 
   );
 }
 
+/* ---------- 数据管理 · 本地 / 云端备份与恢复专属语意图标 ---------- */
+
+/** 本地备份：写入本机磁盘（硬盘托盘 + 向下落盘箭头） */
+export function IconLocalBackup({ size = 15, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
+      <path d="M12 3v9.5m0 0-3-3m3 3 3-3" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3.5" y="14.5" width="17" height="6" rx="2.2" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="16.8" cy="17.5" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 本地恢复：从本机磁盘读取回滚（硬盘托盘 + 向上导入箭头） */
+export function IconLocalRestore({ size = 15, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
+      <path d="M12 12.5V3m0 0-3 3m3-3 3 3" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3.5" y="14.5" width="17" height="6" rx="2.2" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="16.8" cy="17.5" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 云端备份：加密上传至云端（云朵 + 向上上传箭头） */
+export function IconCloudUpload({ size = 15, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
+      <path
+        d="M7.5 18.5H6a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 16.3 8.8 3.8 3.8 0 0 1 18 16.2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12 21v-8.5m0 0-3 3m3-3 3 3" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 云端恢复：从云端拉取解密（云朵 + 向下下载箭头） */
+export function IconCloudDownload({ size = 15, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" className={className}>
+      <path
+        d="M7.5 18.5H6a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 16.3 8.8 3.8 3.8 0 0 1 18 16.2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M12 12.5V21m0 0-3-3m3 3 3-3" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /* ---------- 工作台快捷入口 · 液态玻璃双层叠影图标（无白底框，直接悬浮于粉彩卡片） ---------- */
 
 export function IconQuickImport({ size = 34, className = "" }: { size?: number; className?: string }) {

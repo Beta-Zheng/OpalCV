@@ -12,6 +12,7 @@ import { chatOpenAI } from "../ai";
 import {
   downloadBackupFromGist,
   downloadBackupFromWebDav,
+  listBackupGists,
   uploadBackupToGist,
   uploadBackupToWebDav,
 } from "../sync";
@@ -322,5 +323,36 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
       clearSessionPassphrase();
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("discovers existing OpalCV encrypted backup gists via listBackupGists", async () => {
+    const mockFetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify([
+          {
+            id: "gist_unrelated",
+            description: "random snippet",
+            public: true,
+            updated_at: "2026-11-20T00:00:00Z",
+            files: { "notes.md": { filename: "notes.md" } },
+          },
+          {
+            id: "gist_opal_1",
+            description: "OpalCV Encrypted Backup",
+            public: false,
+            updated_at: "2026-11-26T05:00:00Z",
+            files: { "opalcv-backup.enc.json": { filename: "opalcv-backup.enc.json" } },
+          },
+        ]),
+        { status: 200 }
+      )
+    );
+    const list = await listBackupGists("ghp_test", mockFetch as unknown as typeof fetch);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      id: "gist_opal_1",
+      filename: "opalcv-backup.enc.json",
+      isPublic: false,
+    });
   });
 });

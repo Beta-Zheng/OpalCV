@@ -334,3 +334,61 @@ export async function downloadBackupFromGist(
     filename: targetFile.filename ?? preferredName,
   };
 }
+
+export interface DiscoveredGist {
+  id: string;
+  filename: string;
+  description: string;
+  updatedAt: string;
+  isPublic: boolean;
+}
+
+/** 根据 Token 自动查找账号下已有的 OpalCV 加密备份 Gist（新设备免手动复制 Gist ID） */
+export async function listBackupGists(
+  rawToken: string,
+  fetchImpl: FetchLike = fetch
+): Promise<DiscoveredGist[]> {
+  const token = rawToken.trim();
+  if (!token) {
+    throw new Error("请先填写 GitHub Personal Access Token");
+  }
+  const res = await fetchImpl(`${GITHUB_API_BASE}?per_page=30`, {
+    method: "GET",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`查询 GitHub Gist 列表失败（HTTP ${res.status}）`);
+  }
+  const items = (await res.json()) as Array<{
+    id?: string;
+    description?: string;
+    public?: boolean;
+    updated_at?: string;
+    files?: Record<string, { filename?: string }>;
+  }>;
+  if (!Array.isArray(items)) return [];
+
+  const matched: DiscoveredGist[] = [];
+  for (const item of items) {
+    if (!item?.id || !item.files) continue;
+    const filenames = Object.keys(item.files);
+    const hit =
+      filenames.find((n) => n === DEFAULT_GIST_FILENAME) ??
+      filenames.find((n) => n.endsWith(".enc.json")) ??
+      ((item.description ?? "").toLowerCase().includes("opalcv")
+        ? filenames[0]
+        : undefined);
+    if (!hit) continue;
+    matched.push({
+      id: item.id,
+      filename: item.files[hit]?.filename || hit,
+      description: item.description || DEFAULT_GIST_DESCRIPTION,
+      updatedAt: item.updated_at || "",
+      isPublic: !!item.public,
+    });
+  }
+  return matched;
+}
