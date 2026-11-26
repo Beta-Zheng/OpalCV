@@ -12,6 +12,7 @@ import { chatOpenAI } from "../ai";
 import {
   downloadBackupFromGist,
   downloadBackupFromWebDav,
+  listBackupGists,
   uploadBackupToGist,
   uploadBackupToWebDav,
 } from "../sync";
@@ -170,7 +171,12 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
         calls.push({ method, url, body });
 
         const headers = new Headers(init?.headers);
-        expect(headers.get("Authorization")).toBe("Bearer ghp_secret_token");
+        if (url.startsWith("https://api.github.com/")) {
+          expect(headers.get("Authorization")).toBe("Bearer ghp_secret_token");
+        } else {
+          // gist.githubusercontent.com rejects Authorization in CORS preflight
+          expect(headers.get("Authorization")).toBeNull();
+        }
 
         if (method === "POST" && url === "https://api.github.com/gists") {
           const parsed = JSON.parse(body ?? "{}") as {
@@ -257,7 +263,10 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
     expect(calls[1].method).toBe("PATCH");
 
     const downloaded = await downloadBackupFromGist(
-      { token: "ghp_secret_token", gistId: "gist_abc123" },
+      {
+        token: "ghp_secret_token",
+        gistId: "https://gist.github.com/Beta-Zheng/gist_abc123",
+      },
       "gist-pass",
       backup.models,
       mockFetch as unknown as typeof fetch
@@ -314,5 +323,36 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
       clearSessionPassphrase();
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("discovers existing OpalCV encrypted backup gists via listBackupGists", async () => {
+    const mockFetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify([
+          {
+            id: "gist_unrelated",
+            description: "random snippet",
+            public: true,
+            updated_at: "2026-11-20T00:00:00Z",
+            files: { "notes.md": { filename: "notes.md" } },
+          },
+          {
+            id: "gist_opal_1",
+            description: "OpalCV Encrypted Backup",
+            public: false,
+            updated_at: "2026-11-26T05:00:00Z",
+            files: { "opalcv-backup.enc.json": { filename: "opalcv-backup.enc.json" } },
+          },
+        ]),
+        { status: 200 }
+      )
+    );
+    const list = await listBackupGists("ghp_test", mockFetch as unknown as typeof fetch);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      id: "gist_opal_1",
+      filename: "opalcv-backup.enc.json",
+      isPublic: false,
+    });
   });
 });

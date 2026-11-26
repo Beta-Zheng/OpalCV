@@ -11,8 +11,10 @@ import {
 import {
   downloadBackupFromGist,
   downloadBackupFromWebDav,
+  listBackupGists,
   uploadBackupToGist,
   uploadBackupToWebDav,
+  type DiscoveredGist,
 } from "../lib/sync";
 import { Btn, Confirm, GlassSelect, InfoTip, Toggle, Modal, ModalHeader } from "../components/ui";
 import {
@@ -20,14 +22,16 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronUp,
+  IconCloudDownload,
+  IconCloudUpload,
   IconDatabase,
-  IconDownload,
   IconEye,
   IconEyeOff,
-  IconRefresh,
+  IconLocalBackup,
+  IconLocalRestore,
+  IconSearch,
   IconShield,
   IconTrash,
-  IconUpload,
 } from "../components/icons";
 
 export default function Settings() {
@@ -46,7 +50,7 @@ export default function Settings() {
     "applications",
     "coverLetters"
   );
-  const { resumes, jds, suggestions, models, privacy, setPrivacy } = app;
+  const { resumes, jds, suggestions, models, privacy, setPrivacy, applications } = app;
   const t = useT();
   const [clearArmed, setClearArmed] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -68,6 +72,7 @@ export default function Settings() {
         webdavUser: string;
         gistId: string;
         gistFilename: string;
+        lastSyncAt: string;
       }>;
       return parsed && typeof parsed === "object" ? parsed : null;
     } catch {
@@ -78,6 +83,7 @@ export default function Settings() {
     initialSyncConfig?.syncTarget === "gist" ? "gist" : "webdav"
   );
   const [syncPassphrase, setSyncPassphrase] = useState("");
+  const [syncPassphraseConfirm, setSyncPassphraseConfirm] = useState("");
   const [showSyncPassphrase, setShowSyncPassphrase] = useState(false);
   const [webdavUrl, setWebdavUrl] = useState(
     initialSyncConfig?.webdavUrl ?? ""
@@ -91,9 +97,31 @@ export default function Settings() {
   const [gistFilename, setGistFilename] = useState(
     initialSyncConfig?.gistFilename || "opalcv-backup.enc.json"
   );
+  const [lastSyncAt, setLastSyncAt] = useState(
+    initialSyncConfig?.lastSyncAt ?? ""
+  );
+  const [discoveredGists, setDiscoveredGists] = useState<DiscoveredGist[]>([]);
   const [syncOpen, setSyncOpen] = useState(false);
   const hasSyncConfigured =
     syncTarget === "webdav" ? !!webdavUrl.trim() : !!gistId.trim();
+  const latestLocalEditAt = [
+    ...resumes.map((r) => r.updated_at),
+    ...applications.map((a) => a.updated_at),
+  ]
+    .filter(Boolean)
+    .sort()
+    .pop() ?? "";
+  const hasUnsyncedChanges =
+    !!lastSyncAt && !!latestLocalEditAt && latestLocalEditAt > lastSyncAt;
+  const fmtSyncShort = (iso: string) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${mm}-${dd} ${hh}:${mi}`;
+  };
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -104,13 +132,14 @@ export default function Settings() {
           webdavUser,
           gistId,
           gistFilename,
+          lastSyncAt,
         })
       );
     } catch {
       // ignore storage quota / privacy mode errors
     }
-  }, [syncTarget, webdavUrl, webdavUser, gistId, gistFilename]);
-  const [syncBusy, setSyncBusy] = useState<null | "upload" | "download">(null);
+  }, [syncTarget, webdavUrl, webdavUser, gistId, gistFilename, lastSyncAt]);
+  const [syncBusy, setSyncBusy] = useState<null | "upload" | "download" | "discover">(null);
   const [syncStatus, setSyncStatus] = useState<{
     ok: boolean;
     text: string;
@@ -189,6 +218,21 @@ export default function Settings() {
   };
 
   const handleSyncUpload = async () => {
+    if (!syncPassphrase.trim()) {
+      const msg = t("请先填写同步加密口令", "Please enter a sync passphrase first");
+      setSyncStatus({ ok: false, text: msg });
+      app.toast("warn", msg);
+      return;
+    }
+    if (syncPassphraseConfirm !== syncPassphrase) {
+      const msg = t(
+        "两次输入的同步加密口令不一致，请核对后再上传（防止手误导致无法解密）",
+        "Passphrases do not match. Please confirm to prevent locking yourself out."
+      );
+      setSyncStatus({ ok: false, text: msg });
+      app.toast("warn", msg);
+      return;
+    }
     setSyncBusy("upload");
     setSyncStatus(null);
     try {
@@ -198,6 +242,7 @@ export default function Settings() {
           app,
           syncPassphrase
         );
+        setLastSyncAt(nowISO());
         const msg = `已加密上传至 WebDAV（${res.bytes} 字节）`;
         setSyncStatus({ ok: true, text: msg });
         app.toast("ok", msg);
@@ -208,12 +253,51 @@ export default function Settings() {
           syncPassphrase
         );
         if (res.gistId) setGistId(res.gistId);
+        setLastSyncAt(nowISO());
         const msg = `已加密上传至私有 Gist（ID: ${res.gistId}，${res.bytes} 字节）`;
         setSyncStatus({ ok: true, text: msg });
         app.toast("ok", msg);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "加密上传失败";
+      setSyncStatus({ ok: false, text: msg });
+      app.toast("err", msg);
+    } finally {
+      setSyncBusy(null);
+    }
+  };
+
+  const handleDiscoverGists = async () => {
+    setSyncBusy("discover");
+    setSyncStatus(null);
+    try {
+      const list = await listBackupGists(gistToken);
+      setDiscoveredGists(list);
+      if (list.length === 0) {
+        const msg = t(
+          "未找到已有 OpalCV 备份 Gist；首次上传可将 Gist ID 留空自动创建",
+          "No existing OpalCV backup Gist found. Leave Gist ID blank on first upload to auto-create."
+        );
+        setSyncStatus({ ok: true, text: msg });
+        app.toast("info", msg);
+      } else if (list.length === 1) {
+        setGistId(list[0].id);
+        setGistFilename(list[0].filename);
+        const msg = t(
+          `已自动填入备份 Gist（ID: ${list[0].id}）`,
+          `Found and filled backup Gist (${list[0].id})`
+        );
+        setSyncStatus({ ok: true, text: msg });
+        app.toast("ok", msg);
+      } else {
+        const msg = t(
+          `找到 ${list.length} 个加密备份 Gist，请点击下方卡片选择`,
+          `Found ${list.length} encrypted backup Gists — pick one below`
+        );
+        setSyncStatus({ ok: true, text: msg });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "查找 Gist 失败";
       setSyncStatus({ ok: false, text: msg });
       app.toast("err", msg);
     } finally {
@@ -237,6 +321,8 @@ export default function Settings() {
               syncPassphrase,
               models
             );
+      if (res.gistId) setGistId(res.gistId);
+      setLastSyncAt(nowISO());
       setRestoring({ raw: res.raw, data: res.data });
       setRestoreMode("merge");
       const msg = "已下载并解密备份，请在弹窗中确认恢复方式";
@@ -339,7 +425,7 @@ export default function Settings() {
 
             <div className="flex shrink-0 items-center gap-2">
               <Btn variant="primary" size="sm" className="cta-ai rounded-full px-4" onClick={backup}>
-                <IconDownload size={14} /> {t("备份", "Backup")}
+                <IconLocalBackup size={15} /> {t("备份", "Backup")}
               </Btn>
               <Btn
                 variant="outline"
@@ -347,7 +433,7 @@ export default function Settings() {
                 className="rounded-full px-4"
                 onClick={() => importRef.current?.click()}
               >
-                <IconUpload size={14} /> {t("恢复", "Restore")}
+                <IconLocalRestore size={15} /> {t("恢复", "Restore")}
               </Btn>
               <input
                 ref={importRef}
@@ -450,7 +536,7 @@ export default function Settings() {
             >
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/12 text-indigo-600">
-                  <IconRefresh size={16} />
+                  <IconCloudUpload size={17} />
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -460,13 +546,33 @@ export default function Settings() {
                     <span className="rounded-full bg-subtle px-2 py-0.5 text-[10.5px] font-medium text-ink-500">
                       AES-GCM
                     </span>
-                    {hasSyncConfigured && (
-                      <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10.5px] font-medium text-emerald-600">
+                    {lastSyncAt ? (
+                      <span
+                        className={cx(
+                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium tabular-nums",
+                          hasUnsyncedChanges
+                            ? "bg-amber-500/12 text-amber-700"
+                            : "bg-emerald-500/12 text-emerald-600"
+                        )}
+                      >
+                        <span
+                          className={cx(
+                            "h-1.5 w-1.5 rounded-full",
+                            hasUnsyncedChanges ? "bg-amber-500" : "bg-emerald-500"
+                          )}
+                          aria-hidden="true"
+                        />
+                        {hasUnsyncedChanges
+                          ? t(`本地有新改动 · 上次 ${fmtSyncShort(lastSyncAt)}`, `Unsynced · Last ${fmtSyncShort(lastSyncAt)}`)
+                          : t(`已同步 · ${fmtSyncShort(lastSyncAt)}`, `Synced · ${fmtSyncShort(lastSyncAt)}`)}
+                      </span>
+                    ) : hasSyncConfigured ? (
+                      <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10.5px] font-medium text-indigo-600">
                         {syncTarget === "webdav"
                           ? t("已配置 WebDAV", "WebDAV ready")
                           : t("已配置 Gist", "Gist ready")}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <p className="mt-0.5 text-[12px] text-ink-500">
                     {t(
@@ -516,15 +622,32 @@ export default function Settings() {
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="block md:col-span-2">
-                    <span className="field-label">{t("同步加密口令", "Sync Passphrase")}</span>
+                  <label className="block">
+                    <span className="field-label flex items-center justify-between gap-2">
+                      <span>{t("同步加密口令", "Sync Passphrase")}</span>
+                      {syncPassphrase.length > 0 && (
+                        <span
+                          className={cx(
+                            "text-[11px] font-medium",
+                            syncPassphrase.length >= 8 ? "text-emerald-600" : "text-amber-600"
+                          )}
+                        >
+                          {syncPassphrase.length >= 8
+                            ? t("强度良好", "Good length")
+                            : t("建议 ≥ 8 位", "8+ chars recommended")}
+                        </span>
+                      )}
+                    </span>
                     <div className="liquid-input relative flex items-center rounded-full px-4 py-2">
                       <input
                         type={showSyncPassphrase ? "text" : "password"}
+                        autoComplete="new-password"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
                         className="w-full bg-transparent pr-7 font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
                         value={syncPassphrase}
                         onChange={(e) => setSyncPassphrase(e.target.value)}
-                        placeholder={t("输入加密上传与解密恢复口令…", "Enter passphrase for AES-GCM encryption…")}
+                        placeholder={t("输入加密上传 / 解密恢复口令…", "Passphrase for AES-GCM…")}
                       />
                       <button
                         type="button"
@@ -539,6 +662,34 @@ export default function Settings() {
                         )}
                       </button>
                     </div>
+                  </label>
+
+                  <label className="block">
+                    <span className="field-label flex items-center justify-between gap-2">
+                      <span>{t("确认口令（上传防手误）", "Confirm Passphrase (Upload)")}</span>
+                      {syncPassphraseConfirm.length > 0 && (
+                        <span
+                          className={cx(
+                            "text-[11px] font-medium",
+                            syncPassphraseConfirm === syncPassphrase ? "text-emerald-600" : "text-danger-600"
+                          )}
+                        >
+                          {syncPassphraseConfirm === syncPassphrase
+                            ? t("已一致", "Matched")
+                            : t("不一致", "Mismatch")}
+                        </span>
+                      )}
+                    </span>
+                    <input
+                      type={showSyncPassphrase ? "text" : "password"}
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 outline-none placeholder:text-ink-400"
+                      value={syncPassphraseConfirm}
+                      onChange={(e) => setSyncPassphraseConfirm(e.target.value)}
+                      placeholder={t("再次输入口令（恢复时可留空）", "Re-enter for upload (optional for restore)")}
+                    />
                   </label>
 
                   {syncTarget === "webdav" ? (
@@ -586,16 +737,28 @@ export default function Settings() {
                           placeholder="ghp_… / github_pat_…"
                         />
                       </label>
-                      <label className="block">
+                      <div className="block">
                         <span className="field-label">{t("Gist ID（留空自动新建）", "Gist ID (blank to create)")}</span>
-                        <input
-                          type="text"
-                          className="liquid-input w-full rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
-                          value={gistId}
-                          onChange={(e) => setGistId(e.target.value)}
-                          placeholder="a1b2c3d4e5f6…"
-                        />
-                      </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            className="liquid-input min-w-0 flex-1 rounded-full px-4 py-2 font-mono text-[13px] text-ink-900 placeholder:text-ink-400"
+                            value={gistId}
+                            onChange={(e) => setGistId(e.target.value)}
+                            placeholder="a1b2c3d4e5f6…"
+                          />
+                          <button
+                            type="button"
+                            disabled={syncBusy !== null || !gistToken.trim()}
+                            onClick={() => void handleDiscoverGists()}
+                            title={t("用上方 Token 自动查找已有备份 Gist", "Find existing backup Gists using your token")}
+                            className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-surface px-3 text-[12px] font-medium text-ink-700 shadow-xs ring-1 ring-ink-900/8 transition-colors hover:bg-subtle hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <IconSearch size={13} />
+                            <span>{syncBusy === "discover" ? t("查找中…", "Finding…") : t("查找备份", "Find")}</span>
+                          </button>
+                        </div>
+                      </div>
                       <label className="block">
                         <span className="field-label">{t("Gist 文件名", "Gist Filename")}</span>
                         <input
@@ -606,6 +769,34 @@ export default function Settings() {
                           placeholder="opalcv-backup.enc.json"
                         />
                       </label>
+                      {discoveredGists.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5 md:col-span-2">
+                          {discoveredGists.map((g) => (
+                            <button
+                              key={g.id}
+                              type="button"
+                              onClick={() => {
+                                setGistId(g.id);
+                                setGistFilename(g.filename);
+                                setDiscoveredGists([]);
+                                app.toast("ok", t(`已选择备份 Gist（${g.id.slice(0, 8)}…）`, `Selected Gist ${g.id.slice(0, 8)}…`));
+                              }}
+                              className={cx(
+                                "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11.5px] transition-colors",
+                                gistId === g.id
+                                  ? "bg-brand-50 font-semibold text-brand-700 ring-1 ring-brand-400/40"
+                                  : "bg-subtle text-ink-600 hover:bg-surface hover:text-ink-900"
+                              )}
+                            >
+                              <span className="font-mono">{g.id.slice(0, 8)}…</span>
+                              <span>{g.filename}</span>
+                              {g.updatedAt && (
+                                <span className="text-ink-400 tabular-nums">{fmtSyncShort(g.updatedAt)}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -637,7 +828,7 @@ export default function Settings() {
                     disabled={syncBusy !== null}
                     onClick={() => void handleSyncUpload()}
                   >
-                    <IconUpload size={14} />{" "}
+                    <IconCloudUpload size={15} />{" "}
                     {syncBusy === "upload"
                       ? t("加密上传中…", "Encrypting & uploading…")
                       : syncTarget === "webdav"
@@ -651,7 +842,7 @@ export default function Settings() {
                     disabled={syncBusy !== null}
                     onClick={() => void handleSyncDownload()}
                   >
-                    <IconDownload size={14} />{" "}
+                    <IconCloudDownload size={15} />{" "}
                     {syncBusy === "download"
                       ? t("下载解密中…", "Downloading & decrypting…")
                       : syncTarget === "webdav"

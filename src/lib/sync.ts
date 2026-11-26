@@ -38,6 +38,24 @@ const DEFAULT_GIST_FILENAME = "opalcv-backup.enc.json";
 const DEFAULT_GIST_DESCRIPTION = "OpalCV Encrypted Backup";
 const GITHUB_API_BASE = "https://api.github.com/gists";
 
+/** 支持直接粘贴 Gist ID 或完整的 gist.github.com URL */
+export function normalizeGistId(raw?: string): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const parts = url.pathname.split("/").filter(Boolean);
+      // 形如 /<user>/<id> 或 /<id> 或 /<user>/<id>/raw/...
+      if (parts.length >= 2 && parts[1] !== "raw") return parts[1];
+      if (parts.length >= 1) return parts[0];
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed.replace(/^\/+|\/+$/g, "");
+}
+
 function validateHttpUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
@@ -174,7 +192,7 @@ export async function uploadBackupToGist(
     throw new Error("请填写 GitHub Personal Access Token");
   }
   const filename = config.filename?.trim() || DEFAULT_GIST_FILENAME;
-  const gistId = config.gistId?.trim();
+  const gistId = normalizeGistId(config.gistId);
   const encryptedPayload = await buildEncryptedBackupPayload(
     data,
     syncPassphrase
@@ -239,7 +257,7 @@ export async function downloadBackupFromGist(
   fetchImpl: FetchLike = fetch
 ): Promise<SyncDownloadResult> {
   const token = config.token.trim();
-  const gistId = config.gistId?.trim();
+  const gistId = normalizeGistId(config.gistId);
   if (!token) {
     throw new Error("请填写 GitHub Personal Access Token");
   }
@@ -279,10 +297,22 @@ export async function downloadBackupFromGist(
   }
   let encryptedPayload = targetFile.content ?? "";
   if (targetFile.truncated && targetFile.raw_url) {
-    const rawRes = await fetchImpl(targetFile.raw_url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // gist.githubusercontent.com 拒绝携带 Authorization 的 CORS 预检（会触发 Failed to fetch），
+    // 而 raw_url 本身已包含不可猜测的 Gist ID 与 commit SHA，不带自定义头即可直接简单 GET 拉取。
+    let rawRes: Response;
+    try {
+      rawRes = await fetchImpl(targetFile.raw_url, { method: "GET" });
+    } catch {
+      throw new Error(
+        "无法下载 Gist 原始备份文件（网络或浏览器 CORS 拦截），请检查网络或代理后重试"
+      );
+    }
+    if (!rawRes.ok && (rawRes.status === 401 || rawRes.status === 403)) {
+      rawRes = await fetchImpl(targetFile.raw_url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
     if (!rawRes.ok) {
       throw new Error(`Gist 原始文件下载失败（HTTP ${rawRes.status}）`);
     }
@@ -303,4 +333,62 @@ export async function downloadBackupFromGist(
     gistId: json.id ?? gistId,
     filename: targetFile.filename ?? preferredName,
   };
+}
+
+export interface DiscoveredGist {
+  id: string;
+  filename: string;
+  description: string;
+  updatedAt: string;
+  isPublic: boolean;
+}
+
+/** 根据 Token 自动查找账号下已有的 OpalCV 加密备份 Gist（新设备免手动复制 Gist ID） */
+export async function listBackupGists(
+  rawToken: string,
+  fetchImpl: FetchLike = fetch
+): Promise<DiscoveredGist[]> {
+  const token = rawToken.trim();
+  if (!token) {
+    throw new Error("请先填写 GitHub Personal Access Token");
+  }
+  const res = await fetchImpl(`${GITHUB_API_BASE}?per_page=30`, {
+    method: "GET",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`查询 GitHub Gist 列表失败（HTTP ${res.status}）`);
+  }
+  const items = (await res.json()) as Array<{
+    id?: string;
+    description?: string;
+    public?: boolean;
+    updated_at?: string;
+    files?: Record<string, { filename?: string }>;
+  }>;
+  if (!Array.isArray(items)) return [];
+
+  const matched: DiscoveredGist[] = [];
+  for (const item of items) {
+    if (!item?.id || !item.files) continue;
+    const filenames = Object.keys(item.files);
+    const hit =
+      filenames.find((n) => n === DEFAULT_GIST_FILENAME) ??
+      filenames.find((n) => n.endsWith(".enc.json")) ??
+      ((item.description ?? "").toLowerCase().includes("opalcv")
+        ? filenames[0]
+        : undefined);
+    if (!hit) continue;
+    matched.push({
+      id: item.id,
+      filename: item.files[hit]?.filename || hit,
+      description: item.description || DEFAULT_GIST_DESCRIPTION,
+      updatedAt: item.updated_at || "",
+      isPublic: !!item.public,
+    });
+  }
+  return matched;
 }
