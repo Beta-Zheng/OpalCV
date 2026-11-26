@@ -32,6 +32,22 @@ type CachedSubtree = {
 const subtreeCache = new WeakMap<object, CachedSubtree>();
 const stringHashCache = new Map<string, string>();
 
+/** 非 HTTPS 局域网等无 crypto.subtle 环境下的确定性哈希降级，避免本地保存崩溃 */
+function fallbackHashHex(s: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= c + ((i + 1) & 0xff);
+    h2 = Math.imul(h2, 0x85ebca6b);
+  }
+  const p1 = (h1 >>> 0).toString(16).padStart(8, "0");
+  const p2 = (h2 >>> 0).toString(16).padStart(8, "0");
+  return `fb_${s.length.toString(16)}_${p1}${p2}`;
+}
+
 /** Content addressing shares unchanged entries, images and source text across versions. */
 export async function packDocument(value: unknown): Promise<PackedDocument> {
   const records = new Map<string, unknown>();
@@ -40,13 +56,17 @@ export async function packDocument(value: unknown): Promise<PackedDocument> {
   const hash = async (s: string) => {
     let cached = stringHashCache.get(s);
     if (!cached) {
-      const bytes = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(s)
-      );
-      cached = Array.from(new Uint8Array(bytes), (b) =>
-        b.toString(16).padStart(2, "0")
-      ).join("");
+      if (globalThis.crypto?.subtle) {
+        const bytes = await globalThis.crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(s)
+        );
+        cached = Array.from(new Uint8Array(bytes), (b) =>
+          b.toString(16).padStart(2, "0")
+        ).join("");
+      } else {
+        cached = fallbackHashHex(s);
+      }
       stringHashCache.set(s, cached);
     }
     return cached;
@@ -171,24 +191,46 @@ const transactionDone = (tx: IDBTransaction) =>
   });
 export function indexedDocumentBackend(): DocumentBackend {
   let revision = 0;
-  const database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("opalcv", 1);
-    request.onupgradeneeded = () => {
-      for (const name of ["manifest", "records", "assets"])
-        request.result.createObjectStore(name);
-    };
-    request.onsuccess = () => {
-      request.result.onversionchange = () => request.result.close();
-      resolve(request.result);
-    };
-    request.onerror = () => reject(request.error);
-    request.onblocked = () => reject(new Error("Database upgrade blocked"));
-  });
-  // Observe a failed open immediately, even before hydration requests the database.
-  void database.catch(() => undefined);
+  let dbPromise: Promise<IDBDatabase> | null = null;
+  const openDb = (): Promise<IDBDatabase> => {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("opalcv", 1);
+      request.onupgradeneeded = () => {
+        for (const name of ["manifest", "records", "assets"]) {
+          if (!request.result.objectStoreNames.contains(name)) {
+            request.result.createObjectStore(name);
+          }
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => {
+          dbPromise = null;
+          db.close();
+        };
+        db.onclose = () => {
+          dbPromise = null;
+        };
+        resolve(db);
+      };
+      request.onerror = () => {
+        dbPromise = null;
+        reject(request.error);
+      };
+      request.onblocked = () => {
+        dbPromise = null;
+        reject(new Error("Database upgrade blocked"));
+      };
+    });
+    // Observe a failed open immediately, even before hydration requests the database.
+    void dbPromise.catch(() => undefined);
+    return dbPromise;
+  };
+  void openDb();
   return {
     async read(name) {
-      const db = await database;
+      const db = await openDb();
       const tx = db.transaction(["manifest", "records", "assets"], "readonly");
       const done = transactionDone(tx);
       const [manifest, recordKeys, recordValues, assetKeys, assetValues] =
@@ -214,7 +256,7 @@ export function indexedDocumentBackend(): DocumentBackend {
           };
     },
     async write(name, document, options) {
-      const db = await database;
+      const db = await openDb();
       const tx = db.transaction(["manifest", "records", "assets"], "readwrite");
       let conflicted = false;
       let writtenRevision = revision + 1;
@@ -269,7 +311,7 @@ export function indexedDocumentBackend(): DocumentBackend {
       }
     },
     async remove(name) {
-      const db = await database;
+      const db = await openDb();
       const tx = db.transaction(["manifest", "records", "assets"], "readwrite");
       const done = transactionDone(tx);
       tx.objectStore("manifest").delete(name);
