@@ -170,7 +170,12 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
         calls.push({ method, url, body });
 
         const headers = new Headers(init?.headers);
-        expect(headers.get("Authorization")).toBe("Bearer ghp_secret_token");
+        if (url.startsWith("https://api.github.com/")) {
+          expect(headers.get("Authorization")).toBe("Bearer ghp_secret_token");
+        } else {
+          // gist.githubusercontent.com rejects Authorization in CORS preflight
+          expect(headers.get("Authorization")).toBeNull();
+        }
 
         if (method === "POST" && url === "https://api.github.com/gists") {
           const parsed = JSON.parse(body ?? "{}") as {
@@ -257,7 +262,10 @@ describe("sync (WebDAV & GitHub Private Gist)", () => {
     expect(calls[1].method).toBe("PATCH");
 
     const downloaded = await downloadBackupFromGist(
-      { token: "ghp_secret_token", gistId: "gist_abc123" },
+      {
+        token: "ghp_secret_token",
+        gistId: "https://gist.github.com/Beta-Zheng/gist_abc123",
+      },
       "gist-pass",
       backup.models,
       mockFetch as unknown as typeof fetch
